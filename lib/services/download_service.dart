@@ -1,0 +1,89 @@
+import 'dart:io';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import '../models/reel_item.dart';
+import 'instagram_service.dart';
+import 'instagram_utils.dart';
+
+class DownloadService {
+  final InstagramService _instagramService = InstagramService();
+
+  /// Downloads Instagram reel from URL and returns ReelItem
+  Future<ReelItem> downloadInstagramReel({
+    required String reelUrl,
+    required void Function(double progress) onProgress,
+  }) async {
+    // Validate URL
+    if (!InstagramUtils.isInstagramUrl(reelUrl)) {
+      throw Exception('Invalid Instagram URL');
+    }
+
+    // Get post data
+    final postData = await _instagramService.getPostData(reelUrl);
+
+    if (postData.videoUrl == null || postData.videoUrl!.isEmpty) {
+      throw Exception('Could not find video URL for this reel');
+    }
+
+    // Generate filename
+    final shortcode =
+        postData.shortcode ?? InstagramUtils.extractShortcodeFromUrl(reelUrl);
+    final filename =
+        'reel_${shortcode}_${DateTime.now().millisecondsSinceEpoch}.mp4';
+
+    // Download video
+    final filePath = await downloadToAppDir(
+      videoUrl: Uri.parse(postData.videoUrl!),
+      onProgress: onProgress,
+      suggestedName: filename,
+    );
+
+    // Create ReelItem
+    return ReelItem(
+      id: shortcode,
+      sourceUrl: reelUrl,
+      filePath: filePath,
+      createdAt: DateTime.now(),
+    );
+  }
+
+  /// Returns (filePath)
+  Future<String> downloadToAppDir({
+    required Uri videoUrl,
+    required void Function(double progress) onProgress, // 0..1
+    String? suggestedName,
+  }) async {
+    final dir = await getApplicationDocumentsDirectory();
+    final reelsDir = Directory('${dir.path}/reels');
+    if (!await reelsDir.exists()) await reelsDir.create(recursive: true);
+
+    final name =
+        suggestedName ?? 'reel_${DateTime.now().millisecondsSinceEpoch}.mp4';
+    final file = File('${reelsDir.path}/$name');
+
+    final req = http.Request('GET', videoUrl);
+    final res = await req.send();
+
+    if (res.statusCode != 200) {
+      throw Exception('Download failed (HTTP ${res.statusCode})');
+    }
+
+    final sink = file.openWrite();
+    final contentLen = res.contentLength ?? 0;
+    int received = 0;
+
+    await for (final chunk in res.stream) {
+      received += chunk.length;
+      sink.add(chunk);
+      if (contentLen > 0) {
+        onProgress(received / contentLen);
+      }
+    }
+
+    await sink.flush();
+    await sink.close();
+
+    onProgress(1.0);
+    return file.path;
+  }
+}
