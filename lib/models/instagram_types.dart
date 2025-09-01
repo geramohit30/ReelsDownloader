@@ -49,23 +49,69 @@ class InstagramPostData {
     this.takenAtTimestamp,
   });
 
-  factory InstagramPostData.fromGraphQL(Map<String, dynamic> data) {
-    final postData = data['xdt_shortcode_media'] ?? data['shortcode_media'];
-    if (postData == null) return InstagramPostData();
-
+  factory InstagramPostData.fromGraphQL(Map<String, dynamic> mediaData) {
+    // MediaData is already the xdt_shortcode_media object
     return InstagramPostData(
-      id: postData['id'] as String?,
-      shortcode: postData['shortcode'] as String?,
-      displayUrl: postData['display_url'] as String?,
-      videoUrl: postData['video_url'] as String?,
-      isVideo: postData['is_video'] as bool? ?? false,
-      caption: _extractCaption(postData),
-      username: postData['owner']?['username'] as String?,
-      userProfilePicUrl: postData['owner']?['profile_pic_url'] as String?,
-      likeCount: postData['edge_media_preview_like']?['count'] as int?,
-      commentCount: postData['edge_media_to_comment']?['count'] as int?,
-      takenAtTimestamp: _parseTimestamp(postData['taken_at_timestamp']),
+      id: mediaData['id'] as String?,
+      shortcode: mediaData['shortcode'] as String?,
+      displayUrl: mediaData['display_url'] as String?,
+      videoUrl: _extractVideoUrl(mediaData),
+      isVideo: mediaData['is_video'] as bool? ?? false,
+      caption: _extractCaption(mediaData),
+      username: mediaData['owner']?['username'] as String?,
+      userProfilePicUrl: mediaData['owner']?['profile_pic_url'] as String?,
+      likeCount: mediaData['edge_media_preview_like']?['count'] as int?,
+      commentCount: mediaData['edge_media_to_comment']?['count'] as int?,
+      takenAtTimestamp: _parseTimestamp(mediaData['taken_at_timestamp']),
     );
+  }
+  
+  /// Extract video URL from GraphQL media data with multiple strategies
+  static String? _extractVideoUrl(Map<String, dynamic> mediaData) {
+    // Strategy 1: Direct video_url field
+    final directVideoUrl = mediaData['video_url'] as String?;
+    if (directVideoUrl != null && directVideoUrl.isNotEmpty) {
+      return directVideoUrl;
+    }
+    
+    // Strategy 2: Video resources array
+    final videoResources = mediaData['video_resources'] as List<dynamic>?;
+    if (videoResources != null && videoResources.isNotEmpty) {
+      // Find the highest quality video
+      Map<String, dynamic>? bestVideo;
+      int maxConfig = 0;
+      
+      for (final resource in videoResources) {
+        if (resource is Map<String, dynamic>) {
+          final configWidth = resource['config_width'] as int? ?? 0;
+          final configHeight = resource['config_height'] as int? ?? 0;
+          final score = configWidth * configHeight;
+          
+          if (score > maxConfig) {
+            maxConfig = score;
+            bestVideo = resource;
+          }
+        }
+      }
+      
+      if (bestVideo != null) {
+        return bestVideo['src'] as String?;
+      }
+    }
+    
+    // Strategy 3: Media candidates (for videos)
+    final edgeMediaToVideo = mediaData['edge_media_to_tagged_user'];
+    if (edgeMediaToVideo != null) {
+      // This is a fallback for tagged media structure
+    }
+    
+    // Strategy 4: Playback URL (for video playback)
+    final playbackUrl = mediaData['video_playback_url'] as String?;
+    if (playbackUrl != null && playbackUrl.isNotEmpty) {
+      return playbackUrl;
+    }
+    
+    return null;
   }
 
   static String? _extractCaption(Map<String, dynamic> postData) {
