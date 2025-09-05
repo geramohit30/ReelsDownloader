@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allow cleartext traffic for debugging and connectivity checks -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system"/>
+        </trust-anchors>
+    </base-config>
+    
+    <!-- Specific domain configurations for Instagram and related services -->
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Instagram domains -->
+        <domain includeSubdomains="true">instagram.com</domain>
+        <domain includeSubdomains="true">cdninstagram.com</domain>
+        <domain includeSubdomains="true">scontent.cdninstagram.com</domain>
+        <domain includeSubdomains="true">scontent-ssn1-1.cdninstagram.com</domain>
+        
+        <!-- Facebook/Meta domains -->
+        <domain includeSubdomains="true">facebook.com</domain>
+        <domain includeSubdomains="true">fbcdn.net</domain>
+        <domain includeSubdomains="true">xx.fbcdn.net</domain>
+        
+        <!-- Connectivity check domains -->
+        <domain includeSubdomains="true">google.com</domain>
+        <domain includeSubdomains="true">googleapis.com</domain>
+        <domain includeSubdomains="true">httpbin.org</domain>
+        <domain includeSubdomains="true">github.com</domain>
+        <domain includeSubdomains="true">api.github.com</domain>
+    </domain-config>
+    
+    <!-- Additional config for release mode debugging -->
+    <debug-overrides>
+        <trust-anchors>
+            <certificates src="user"/>
+            <certificates src="system"/>
+        </trust-anchors>
+    </debug-overrides>
+</network-security-config>
