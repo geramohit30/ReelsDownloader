@@ -159,7 +159,7 @@ class _HomeScreenState extends State<HomeScreen> {
               BoxShadow(
                 color: theme.colorScheme.primary.withOpacity(0.3),
                 blurRadius: 20,
-                offset: const Offset(0, 10),
+                offset: const Offset(0, 1),
               ),
             ],
           ),
@@ -208,7 +208,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildUrlInputCard(ThemeData theme, bool isBusy) {
     return Card(
-      elevation: 12,
+      color: theme.cardColor,
+      elevation: 0.5,
       shadowColor: theme.colorScheme.primary.withOpacity(0.2),
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -238,7 +239,9 @@ class _HomeScreenState extends State<HomeScreen> {
               enabled: !isBusy,
               decoration: InputDecoration(
                 hintText: 'https://www.instagram.com/reel/...',
-                hintStyle: TextStyle(color: Colors.grey.shade500),
+                hintStyle: TextStyle(
+                  color: theme.colorScheme.onSurface.withOpacity(0.4),
+                ),
                 prefixIcon: Icon(Icons.link, color: theme.colorScheme.primary),
                 suffixIcon: Container(
                   margin: const EdgeInsets.all(4),
@@ -274,7 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
             Text(
               'Paste a public Instagram Reel link for personal/testing use.',
               style: theme.textTheme.bodySmall?.copyWith(
-                color: Colors.grey.shade600,
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
               ),
             ),
           ],
@@ -291,7 +294,10 @@ class _HomeScreenState extends State<HomeScreen> {
         gradient: LinearGradient(
           colors:
               isBusy
-                  ? [Colors.grey.shade400, Colors.grey.shade500]
+                  ? [
+                    theme.colorScheme.onSurface.withOpacity(0.4),
+                    theme.colorScheme.onSurface.withOpacity(0.5),
+                  ]
                   : [theme.colorScheme.primary, theme.colorScheme.secondary],
         ),
         borderRadius: BorderRadius.circular(16),
@@ -300,7 +306,7 @@ class _HomeScreenState extends State<HomeScreen> {
             color: (isBusy ? Colors.grey : theme.colorScheme.primary)
                 .withOpacity(0.3),
             blurRadius: 15,
-            offset: const Offset(0, 8),
+            offset: const Offset(0, 1),
           ),
         ],
       ),
@@ -354,6 +360,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return [
       const SizedBox(height: 24),
       Card(
+        elevation: 0.5,
         child: Padding(
           padding: const EdgeInsets.all(20),
           child: Column(
@@ -397,6 +404,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildRecentDownloads(ThemeData theme, DownloadProvider provider) {
     if (provider.items.isEmpty) {
       return Card(
+        color: theme.cardColor,
+        elevation: 0.5,
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -404,20 +413,20 @@ class _HomeScreenState extends State<HomeScreen> {
               Icon(
                 Icons.video_library_outlined,
                 size: 48,
-                color: Colors.grey.shade400,
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
               ),
               const SizedBox(height: 16),
               Text(
                 'No downloads yet',
                 style: theme.textTheme.titleMedium?.copyWith(
-                  color: Colors.grey.shade600,
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
                 ),
               ),
               const SizedBox(height: 8),
               Text(
                 'Downloaded reels will appear here',
                 style: theme.textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey.shade500,
+                  color: theme.colorScheme.onSurface.withOpacity(0.5),
                 ),
               ),
             ],
@@ -427,6 +436,8 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     return Card(
+      color: theme.cardColor,
+      elevation: 0.5,
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(

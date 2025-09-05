@@ -37,8 +37,8 @@ class SettingsScreen extends StatelessWidget {
                             child: FadeInAnimation(child: widget),
                           ),
                       children: [
-                        _buildGeneralSection(theme, context),
-                        const SizedBox(height: 20),
+                        // _buildGeneralSection(theme, context),
+                        // const SizedBox(height: 20),
                         _buildDownloadSection(theme, context),
                         const SizedBox(height: 20),
                         _buildAppearanceSection(theme, context),
@@ -89,7 +89,7 @@ class SettingsScreen extends StatelessWidget {
                 Text(
                   'Customize your experience',
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey.shade600,
+                    color: theme.colorScheme.onSurface.withOpacity(0.7),
                   ),
                 ),
               ],
@@ -120,27 +120,27 @@ class SettingsScreen extends StatelessWidget {
           onTap: null,
           theme: theme,
         ),
-        // _buildSettingsTile(
-        //   icon: Icons.auto_delete_rounded,
-        //   title: 'Auto Delete',
-        //   subtitle: 'Remove downloads after 30 days',
-        //   trailing: Switch(
-        //     value: false,
-        //     onChanged: (value) {
-        //       HapticFeedback.lightImpact();
-        //       _showFeatureComingSoon(context);
-        //     },
-        //   ),
-        //   onTap: null,
-        //   theme: theme,
-        // ),
+        _buildSettingsTile(
+          icon: Icons.auto_delete_rounded,
+          title: 'Auto Delete',
+          subtitle: 'Remove downloads after 30 days',
+          trailing: Switch(
+            value: false,
+            onChanged: (value) {
+              HapticFeedback.lightImpact();
+              _showFeatureComingSoon(context);
+            },
+          ),
+          onTap: null,
+          theme: theme,
+        ),
         _buildSettingsTile(
           icon: Icons.language_rounded,
           title: 'Language',
           subtitle: 'English (US)',
           trailing: Icon(
             Icons.chevron_right_rounded,
-            color: Colors.grey.shade400,
+            color: theme.colorScheme.onSurface.withOpacity(0.6),
           ),
           onTap: () => _showFeatureComingSoon(context),
           theme: theme,
@@ -159,35 +159,23 @@ class SettingsScreen extends StatelessWidget {
           icon: Icons.folder_rounded,
           title: 'Download Location',
           subtitle: 'App Documents',
-          trailing: Icon(
-            Icons.chevron_right_rounded,
-            color: Colors.grey.shade400,
-          ),
-          onTap: () => _showFeatureComingSoon(context),
+          trailing: SizedBox.shrink(),
+          onTap: null,
           theme: theme,
         ),
         _buildSettingsTile(
           icon: Icons.high_quality_rounded,
           title: 'Video Quality',
           subtitle: 'Best Available',
-          trailing: Icon(
-            Icons.chevron_right_rounded,
-            color: Colors.grey.shade400,
-          ),
-          onTap: () => _showFeatureComingSoon(context),
+          trailing: SizedBox.shrink(),
+          onTap: null,
           theme: theme,
         ),
         _buildSettingsTile(
           icon: Icons.wifi_rounded,
           title: 'Download over WiFi only',
           subtitle: 'Save mobile data',
-          trailing: Switch(
-            value: true,
-            onChanged: (value) {
-              HapticFeedback.lightImpact();
-              _showFeatureComingSoon(context);
-            },
-          ),
+          trailing: SizedBox.shrink(),
           onTap: null,
           theme: theme,
         ),
@@ -207,22 +195,22 @@ class SettingsScreen extends StatelessWidget {
           subtitle: 'System Default',
           trailing: Icon(
             Icons.chevron_right_rounded,
-            color: Colors.grey.shade400,
+            color: theme.colorScheme.onSurface.withOpacity(0.6),
           ),
           onTap: () => _showThemeSelector(context),
           theme: theme,
         ),
-        _buildSettingsTile(
-          icon: Icons.grid_view_rounded,
-          title: 'Grid Layout',
-          subtitle: '2 columns',
-          trailing: Icon(
-            Icons.chevron_right_rounded,
-            color: Colors.grey.shade400,
-          ),
-          onTap: () => _showFeatureComingSoon(context),
-          theme: theme,
-        ),
+        // _buildSettingsTile(
+        //   icon: Icons.grid_view_rounded,
+        //   title: 'Grid Layout',
+        //   subtitle: '2 columns',
+        //   trailing: Icon(
+        //     Icons.chevron_right_rounded,
+        //     color: theme.colorScheme.onSurface.withOpacity(0.6),
+        //   ),
+        //   onTap: () => _showFeatureComingSoon(context),
+        //   theme: theme,
+        // ),
       ],
     );
   }
@@ -239,7 +227,7 @@ class SettingsScreen extends StatelessWidget {
           subtitle: 'Version 1.0.0',
           trailing: Icon(
             Icons.chevron_right_rounded,
-            color: Colors.grey.shade400,
+            color: theme.colorScheme.onSurface.withOpacity(0.6),
           ),
           onTap: () => _showAppInfo(context),
           theme: theme,
@@ -250,7 +238,7 @@ class SettingsScreen extends StatelessWidget {
           subtitle: 'How we protect your data',
           trailing: Icon(
             Icons.chevron_right_rounded,
-            color: Colors.grey.shade400,
+            color: theme.colorScheme.onSurface.withOpacity(0.6),
           ),
           onTap: () => _showFeatureComingSoon(context),
           theme: theme,
@@ -261,7 +249,7 @@ class SettingsScreen extends StatelessWidget {
           subtitle: 'Get help and send feedback',
           trailing: Icon(
             Icons.chevron_right_rounded,
-            color: Colors.grey.shade400,
+            color: theme.colorScheme.onSurface.withOpacity(0.6),
           ),
           onTap: () => _showSupport(context),
           theme: theme,
@@ -272,7 +260,7 @@ class SettingsScreen extends StatelessWidget {
           subtitle: 'Show some love ❤️',
           trailing: Icon(
             Icons.chevron_right_rounded,
-            color: Colors.grey.shade400,
+            color: theme.colorScheme.onSurface.withOpacity(0.6),
           ),
           onTap: () => _showFeatureComingSoon(context),
           theme: theme,
@@ -363,7 +351,7 @@ class SettingsScreen extends StatelessWidget {
                       Text(
                         subtitle,
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: Colors.grey.shade600,
+                          color: theme.colorScheme.onSurface.withOpacity(0.7),
                         ),
                       ),
                     ],
@@ -404,7 +392,9 @@ class SettingsScreen extends StatelessWidget {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -475,10 +465,17 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Text('Insta Reel Downloader'),
+                const Expanded(
+                  child: Text(
+                    'Insta Reel\nDownloader',
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 2,
+                    textAlign: TextAlign.start,
+                  ),
+                ),
               ],
             ),
-            content: const Column(
+            content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -490,7 +487,12 @@ class SettingsScreen extends StatelessWidget {
                 SizedBox(height: 16),
                 Text(
                   'This app allows you to download Instagram Reels for offline viewing. Please respect content creators and use downloaded content responsibly.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.6),
+                  ),
                 ),
               ],
             ),
@@ -513,7 +515,7 @@ class SettingsScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(20),
             ),
             title: const Text('Support & Feedback'),
-            content: const Column(
+            content: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -525,7 +527,12 @@ class SettingsScreen extends StatelessWidget {
                 SizedBox(height: 16),
                 Text(
                   'Contact us through the app store or our website.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.6),
+                  ),
                 ),
               ],
             ),

@@ -59,9 +59,7 @@ class MyApp extends StatelessWidget {
       cardTheme: CardThemeData(
         color: Colors.white,
         elevation: 4,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -72,7 +70,7 @@ class MyApp extends StatelessWidget {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.grey.shade300),
+          borderSide: BorderSide(color: primaryColor.withOpacity(0.2)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
@@ -89,16 +87,18 @@ class MyApp extends StatelessWidget {
   ThemeData _buildDarkTheme() {
     const primaryColor = Color(0xFF8B7EFF);
     const secondaryColor = Color(0xFFFF8A8A);
-    const surfaceColor = Color(0xFF1E1E2E);
+    const surfaceColor = Color(0xFF2A2D3A);
 
     return ThemeData(
       useMaterial3: true,
+      scaffoldBackgroundColor: const Color(0xFF2C3142),
       colorScheme: ColorScheme.fromSeed(
         seedColor: primaryColor,
         brightness: Brightness.dark,
         primary: primaryColor,
         secondary: secondaryColor,
         surface: surfaceColor,
+        background: const Color(0xFF2C3142),
       ),
       textTheme: GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -112,22 +112,19 @@ class MyApp extends StatelessWidget {
         ),
       ),
       cardTheme: CardThemeData(
-    color: Colors.white,
-    elevation: 4,
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(12),
-    ),
-  ),
+        elevation: 4,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: const Color(0xFF2A2D3A),
+        fillColor: const Color(0xFF363A47),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
           borderSide: BorderSide.none,
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),
-          borderSide: BorderSide(color: Colors.grey.shade600),
+          borderSide: BorderSide(color: primaryColor.withOpacity(0.4)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(16),

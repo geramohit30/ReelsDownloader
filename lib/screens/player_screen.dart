@@ -1,14 +1,19 @@
 import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:video_player/video_player.dart';
 import 'package:share_plus/share_plus.dart';
-import '../providers/download_provider.dart';
-import '../models/reel_item.dart';
+import 'package:video_player/video_player.dart';
 
+import '../models/reel_item.dart';
+import '../providers/download_provider.dart';
+
+/// A video player screen for displaying downloaded Instagram Reels
+/// with custom controls, progress overlay, and sharing functionality.
 class PlayerScreen extends StatefulWidget {
   final String itemId;
+
   const PlayerScreen({super.key, required this.itemId});
 
   @override
@@ -102,7 +107,13 @@ class _PlayerScreenState extends State<PlayerScreen>
                           onTap: _toggleControls,
                           child: AspectRatio(
                             aspectRatio: _controller!.value.aspectRatio,
-                            child: VideoPlayer(_controller!),
+                            child: Stack(
+                              children: [
+                                ClipRect(child: VideoPlayer(_controller!)),
+                                // Progress bar overlaid on video
+                                _buildVideoOverlayProgressBar(theme),
+                              ],
+                            ),
                           ),
                         ),
                       )
@@ -114,18 +125,12 @@ class _PlayerScreenState extends State<PlayerScreen>
               duration: const Duration(milliseconds: 300),
               child: _buildTopControls(theme),
             ),
-            // Bottom Controls
-            AnimatedOpacity(
-              opacity: _isControlsVisible ? 1.0 : 0.0,
-              duration: const Duration(milliseconds: 300),
-              child: _buildBottomControls(theme),
-            ),
-            // Center Play/Pause Button
+            // Center Control Buttons
             if (isReady)
               AnimatedOpacity(
                 opacity: _isControlsVisible ? 1.0 : 0.0,
                 duration: const Duration(milliseconds: 300),
-                child: _buildCenterPlayButton(theme),
+                child: _buildCenterControls(theme),
               ),
           ],
         ),
@@ -186,7 +191,7 @@ class _PlayerScreenState extends State<PlayerScreen>
           Text(
             'The video file might be corrupted',
             style: theme.textTheme.bodyMedium?.copyWith(
-              color: Colors.grey.shade400,
+              color: theme.colorScheme.onSurface.withOpacity(0.6),
             ),
           ),
           const SizedBox(height: 24),
@@ -257,7 +262,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     );
   }
 
-  Widget _buildBottomControls(ThemeData theme) {
+  Widget _buildBottomProgressBar(ThemeData theme) {
     final isReady = _controller?.value.isInitialized ?? false;
     if (!isReady) return const SizedBox();
 
@@ -273,58 +278,58 @@ class _PlayerScreenState extends State<PlayerScreen>
             colors: [Colors.black.withOpacity(0.8), Colors.transparent],
           ),
         ),
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Progress Bar
-            VideoProgressIndicator(
-              _controller!,
-              allowScrubbing: true,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              colors: VideoProgressColors(
-                playedColor: theme.colorScheme.primary,
-                bufferedColor: Colors.white.withOpacity(0.3),
-                backgroundColor: Colors.white.withOpacity(0.1),
-              ),
-            ),
-            const SizedBox(height: 16),
-            // Control Buttons
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildControlButton(
-                  icon: Icons.replay_10_rounded,
-                  onPressed: () => _seekRelative(-10),
-                ),
-                _buildControlButton(
-                  icon:
-                      _controller!.value.isPlaying
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                  onPressed: _togglePlayPause,
-                  isLarge: true,
-                ),
-                _buildControlButton(
-                  icon: Icons.forward_10_rounded,
-                  onPressed: () => _seekRelative(10),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
             // Time Display
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
                   _formatDuration(_controller!.value.position),
-                  style: const TextStyle(color: Colors.white, fontSize: 14),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
+                  ),
                 ),
                 Text(
                   _formatDuration(_controller!.value.duration),
-                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
+                  ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            // Progress Bar
+            Container(
+              height: 4,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.3),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: VideoProgressIndicator(
+                _controller!,
+                allowScrubbing: true,
+                padding: EdgeInsets.zero,
+                colors: VideoProgressColors(
+                  playedColor: theme.colorScheme.primary,
+                  bufferedColor: Colors.white.withOpacity(0.4),
+                  backgroundColor: Colors.white.withOpacity(0.3),
+                ),
+              ),
             ),
           ],
         ),
@@ -332,45 +337,112 @@ class _PlayerScreenState extends State<PlayerScreen>
     );
   }
 
-  Widget _buildCenterPlayButton(ThemeData theme) {
+  Widget _buildBottomTimeDisplay(ThemeData theme) {
+    final isReady = _controller?.value.isInitialized ?? false;
+    if (!isReady) return const SizedBox();
+
+    return Positioned(
+      bottom: 20,
+      left: 0,
+      right: 0,
+      child: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.bottomCenter,
+            end: Alignment.topCenter,
+            colors: [Colors.black.withOpacity(0.7), Colors.transparent],
+          ),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              _formatDuration(_controller!.value.position),
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
+              ),
+            ),
+            Text(
+              _formatDuration(_controller!.value.duration),
+              style: const TextStyle(
+                color: Colors.white70,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+                shadows: [Shadow(color: Colors.black54, blurRadius: 2)],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCenterControls(ThemeData theme) {
     return Positioned.fill(
       child: Center(
-        child: GestureDetector(
-          onTap: _togglePlayPause,
-          child: Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.6),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              _controller!.value.isPlaying
-                  ? Icons.pause_rounded
-                  : Icons.play_arrow_rounded,
-              color: Colors.white,
-              size: 40,
-            ),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 40),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _buildControlButton(
+                icon: Icons.replay_10_rounded,
+                onPressed: () => _seekRelative(-10),
+                isLarge: true,
+              ),
+              _buildControlButton(
+                icon:
+                    _controller!.value.isPlaying
+                        ? Icons.pause_rounded
+                        : Icons.play_arrow_rounded,
+                onPressed: _togglePlayPause,
+                isLarge: true,
+                isMainButton: true,
+              ),
+              _buildControlButton(
+                icon: Icons.forward_10_rounded,
+                onPressed: () => _seekRelative(10),
+                isLarge: true,
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
+  // ============================================================================
+  // CONTROL BUTTON BUILDER
+  // ============================================================================
+
   Widget _buildControlButton({
     required IconData icon,
     required VoidCallback onPressed,
     bool isLarge = false,
+    bool isMainButton = false,
   }) {
+    final size = isMainButton ? 80.0 : (isLarge ? 60.0 : 48.0);
+    final iconSize = isMainButton ? 40.0 : (isLarge ? 28.0 : 24.0);
+
     return Container(
+      width: size,
+      height: size,
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.5),
+        color: Colors.black.withOpacity(isMainButton ? 0.7 : 0.5),
         shape: BoxShape.circle,
+        border:
+            isMainButton
+                ? Border.all(color: Colors.white.withOpacity(0.3), width: 2)
+                : null,
       ),
       child: IconButton(
         onPressed: onPressed,
-        icon: Icon(icon, color: Colors.white, size: isLarge ? 32 : 24),
-        iconSize: isLarge ? 56 : 48,
+        icon: Icon(icon, color: Colors.white, size: iconSize),
+        iconSize: size,
       ),
     );
   }
@@ -406,6 +478,10 @@ class _PlayerScreenState extends State<PlayerScreen>
     HapticFeedback.lightImpact();
     await Share.shareXFiles([XFile(_item!.filePath)]);
   }
+
+  // ============================================================================
+  // VIDEO INFO DIALOG
+  // ============================================================================
 
   void _showVideoInfo() {
     showModalBottomSheet(
@@ -474,7 +550,7 @@ class _PlayerScreenState extends State<PlayerScreen>
           Text(
             label,
             style: TextStyle(
-              color: Colors.grey.shade600,
+              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -483,6 +559,10 @@ class _PlayerScreenState extends State<PlayerScreen>
       ),
     );
   }
+
+  // ============================================================================
+  // UTILITY METHODS
+  // ============================================================================
 
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
@@ -513,5 +593,69 @@ class _PlayerScreenState extends State<PlayerScreen>
     } catch (e) {
       return 'Unknown';
     }
+  }
+
+  // ============================================================================
+  // VIDEO OVERLAY PROGRESS BAR
+  // ============================================================================
+
+  Widget _buildVideoOverlayProgressBar(ThemeData theme) {
+    final isReady = _controller?.value.isInitialized ?? false;
+    if (!isReady) return const SizedBox();
+
+    return Positioned(
+      bottom: 16,
+      left: 16,
+      right: 16,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.6),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Time Display
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  _formatDuration(_controller!.value.position),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  _formatDuration(_controller!.value.duration),
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            // Progress Bar
+            Container(
+              height: 3,
+              child: VideoProgressIndicator(
+                _controller!,
+                allowScrubbing: true,
+                padding: EdgeInsets.zero,
+                colors: VideoProgressColors(
+                  playedColor: theme.colorScheme.primary,
+                  bufferedColor: Colors.white.withOpacity(0.4),
+                  backgroundColor: Colors.white.withOpacity(0.3),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

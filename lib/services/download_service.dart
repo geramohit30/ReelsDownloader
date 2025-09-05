@@ -18,8 +18,8 @@ class DownloadService {
       throw Exception('Invalid Instagram URL');
     }
 
-    // Get post data
-    final postData = await _instagramService.getPostData(reelUrl);
+    // Get post data using optimized method for release mode compatibility
+    final postData = await _instagramService.getPostDataOptimized(reelUrl);
 
     if (postData.videoUrl == null || postData.videoUrl!.isEmpty) {
       throw Exception('Could not find video URL for this reel');

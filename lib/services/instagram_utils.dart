@@ -71,8 +71,8 @@ class InstagramUtils {
     final uri = Uri.tryParse(url);
     if (uri == null) return false;
 
-    return (uri.host.contains('instagram.com') || uri.host == 'instagr.am') &&
-        (uri.path.contains('/p/') || uri.path.contains('/reel/'));
+    return (uri.host.contains('instagram.com') || uri.host == 'instagr.am')
+        && (uri.path.contains('/p/') || uri.path.contains('/reel/'));
   }
 
   /// Generates a CSRF token (simplified version)

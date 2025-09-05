@@ -12,48 +12,56 @@ class InstagramService {
   static final List<Map<String, dynamic>> _userAgentPool = [
     // Mobile User Agents (Higher success rate for Instagram)
     {
-      'ua': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+      'ua':
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
       'type': 'mobile',
       'weight': 3,
     },
     {
-      'ua': 'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
+      'ua':
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
       'type': 'mobile',
       'weight': 2,
     },
     {
-      'ua': 'Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36',
+      'ua':
+          'Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36',
       'type': 'mobile',
       'weight': 3,
     },
     {
-      'ua': 'Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36',
+      'ua':
+          'Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36',
       'type': 'mobile',
       'weight': 2,
     },
     {
-      'ua': 'Mozilla/5.0 (Linux; Android 11; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.101 Mobile Safari/537.36',
+      'ua':
+          'Mozilla/5.0 (Linux; Android 11; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.101 Mobile Safari/537.36',
       'type': 'mobile',
       'weight': 2,
     },
     // Desktop User Agents (Fallback options)
     {
-      'ua': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'ua':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'type': 'desktop',
       'weight': 1,
     },
     {
-      'ua': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+      'ua':
+          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
       'type': 'desktop',
       'weight': 1,
     },
     {
-      'ua': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0',
+      'ua':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0',
       'type': 'desktop',
       'weight': 1,
     },
   ];
-  
+
   // Track success rates for each user agent
   static final Map<String, int> _userAgentSuccess = {};
   static final Map<String, int> _userAgentAttempts = {};
@@ -73,77 +81,85 @@ class InstagramService {
     // Filter agents by preference
     List<Map<String, dynamic>> preferredAgents;
     if (preference == 'desktop') {
-      preferredAgents = _userAgentPool.where((agent) => agent['type'] == 'desktop').toList();
+      preferredAgents =
+          _userAgentPool.where((agent) => agent['type'] == 'desktop').toList();
     } else {
-      preferredAgents = _userAgentPool.where((agent) => agent['type'] == 'mobile').toList();
+      preferredAgents =
+          _userAgentPool.where((agent) => agent['type'] == 'mobile').toList();
     }
-    
+
     // If no preferred agents, use all
     if (preferredAgents.isEmpty) preferredAgents = _userAgentPool;
-    
+
     // Calculate weighted user agents based on success rates
     final weightedAgents = <String>[];
-    
+
     for (final agent in preferredAgents) {
       final ua = agent['ua'] as String;
       final baseWeight = agent['weight'] as int;
-      
+
       // Calculate success rate (default to 50% for new agents)
       final attempts = _userAgentAttempts[ua] ?? 0;
       final successes = _userAgentSuccess[ua] ?? 0;
       final successRate = attempts > 0 ? successes / attempts : 0.5;
-      
+
       // Boost weight for agents with good success rates
       double adjustedWeight = baseWeight * (1 + successRate);
-      
+
       // Add recency bonus (prefer recently successful agents)
       if (attempts > 0 && successes > 0) {
         adjustedWeight *= 1.2;
       }
-      
+
       // Calculate final weight
       final finalWeight = adjustedWeight.round();
-      
+
       // Add multiple entries based on weight
       for (int i = 0; i < finalWeight; i++) {
         weightedAgents.add(ua);
       }
     }
-    
+
     if (weightedAgents.isEmpty) {
       // Fallback to first mobile agent
       return _userAgentPool.first['ua'] as String;
     }
-    
+
     final selected = weightedAgents[_random.nextInt(weightedAgents.length)];
-    
+
     // Log selection for debugging
-    final agentType = _userAgentPool.firstWhere((a) => a['ua'] == selected)['type'];
+    final agentType =
+        _userAgentPool.firstWhere((a) => a['ua'] == selected)['type'];
     final attempts = _userAgentAttempts[selected] ?? 0;
     final successes = _userAgentSuccess[selected] ?? 0;
-    final rate = attempts > 0 ? (successes / attempts * 100).toStringAsFixed(1) : 'New';
-    
+    final rate =
+        attempts > 0 ? (successes / attempts * 100).toStringAsFixed(1) : 'New';
+
     print('\n🎯 SELECTED USER AGENT:');
     print('   • Type: $agentType');
     print('   • Success Rate: $rate% ($successes/$attempts)');
-    print('   • Agent: ${selected.substring(0, math.min(80, selected.length))}...');
-    
+    print(
+      '   • Agent: ${selected.substring(0, math.min(80, selected.length))}...',
+    );
+
     return selected;
   }
-  
+
   /// Record success/failure for user agent optimization
   static void _recordUserAgentResult(String userAgent, bool success) {
     _userAgentAttempts[userAgent] = (_userAgentAttempts[userAgent] ?? 0) + 1;
     if (success) {
       _userAgentSuccess[userAgent] = (_userAgentSuccess[userAgent] ?? 0) + 1;
     }
-    
+
     // Log success rates periodically
     if (_userAgentAttempts[userAgent]! % 5 == 0) {
       final attempts = _userAgentAttempts[userAgent]!;
       final successes = _userAgentSuccess[userAgent] ?? 0;
       final rate = (successes / attempts * 100).toStringAsFixed(1);
-      print('📊 User Agent Success Rate: ${userAgent.substring(0, 50)}... = $rate% ($successes/$attempts)');
+      print(
+        '📊 User Agent Success Rate: ${userAgent.substring(0, 50)}... = $rate% ($successes/$attempts)',
+      );
     }
   }
 
@@ -151,7 +167,9 @@ class InstagramService {
   static Future<void> _initializeSession() async {
     // Check if existing session is still valid
     if (_isSessionValid()) {
-      print('   • Session already initialized and valid, reusing existing session');
+      print(
+        '   • Session already initialized and valid, reusing existing session',
+      );
       print('   • Session expires: ${_sessionExpiry?.toIso8601String()}');
       return;
     }
@@ -174,40 +192,45 @@ class InstagramService {
         'Cache-Control': 'no-cache',
         'Pragma': 'no-cache',
       };
-      
+
       print('   • Attempting to connect to Instagram...');
-      final response = await http.get(
-        Uri.parse('https://www.instagram.com/'),
-        headers: headers,
-      ).timeout(
-        Duration(seconds: 30),
-        onTimeout: () {
-          throw Exception('Session initialization timed out after 30 seconds');
-        },
-      );
+      final response = await http
+          .get(Uri.parse('https://www.instagram.com/'), headers: headers)
+          .timeout(
+            Duration(seconds: 30),
+            onTimeout: () {
+              throw Exception(
+                'Session initialization timed out after 30 seconds',
+              );
+            },
+          );
 
       print('   • Instagram response received: ${response.statusCode}');
-      
+
       if (response.statusCode == 200) {
         // Extract session data from cookies
         final cookies = response.headers['set-cookie'];
         if (cookies != null) {
           _extractSessionData(cookies);
-          
+
           // Set session expiry
-          _sessionExpiry = DateTime.now().add(Duration(hours: _sessionValidityHours));
-          
+          _sessionExpiry = DateTime.now().add(
+            Duration(hours: _sessionValidityHours),
+          );
+
           print('✅ Session initialized successfully');
           print('   • Session ID: ${_sessionId?.substring(0, 8)}...');
           print('   • CSRF Token: ${_csrfToken?.substring(0, 8)}...');
           print('   • Valid until: ${_sessionExpiry?.toIso8601String()}');
-          
+
           // Log session quality
           final sessionQuality = _assessSessionQuality();
           print('   • Session quality: $sessionQuality');
         } else {
           print('⚠️ No cookies received from Instagram');
-          print('   • This is unusual but we\'ll continue without session cookies');
+          print(
+            '   • This is unusual but we\'ll continue without session cookies',
+          );
           _setMinimalSession();
         }
       } else if (response.statusCode == 429) {
@@ -243,7 +266,7 @@ class InstagramService {
     } catch (e) {
       print('🔴 Session initialization error: $e');
       print('   • Error type: ${e.runtimeType}');
-      
+
       if (e.toString().contains('No address associated with hostname') ||
           e.toString().contains('Failed host lookup')) {
         throw Exception(
@@ -251,13 +274,11 @@ class InstagramService {
           'Please check your internet connection and DNS settings.',
         );
       }
-      
-      throw Exception(
-        'Failed to initialize Instagram session: $e',
-      );
+
+      throw Exception('Failed to initialize Instagram session: $e');
     }
   }
-  
+
   /// Check if current session is still valid
   static bool _isSessionValid() {
     if (_sessionExpiry == null) return false;
@@ -268,7 +289,7 @@ class InstagramService {
     }
     return _csrfToken != null; // At minimum we need a CSRF token
   }
-  
+
   /// Clear expired or invalid session data
   static void _clearSession() {
     _sessionId = null;
@@ -278,13 +299,15 @@ class InstagramService {
     _ig_nrcb = null;
     _sessionExpiry = null;
   }
-  
+
   /// Set minimal session for cases where cookies aren't received
   static void _setMinimalSession() {
     _csrfToken = 'fallback_${DateTime.now().millisecondsSinceEpoch}';
-    _sessionExpiry = DateTime.now().add(Duration(hours: 1)); // Shorter expiry for fallback
+    _sessionExpiry = DateTime.now().add(
+      Duration(hours: 1),
+    ); // Shorter expiry for fallback
   }
-  
+
   /// Assess the quality of the current session
   static String _assessSessionQuality() {
     int score = 0;
@@ -293,7 +316,7 @@ class InstagramService {
     if (_mid != null) score += 1;
     if (_ig_did != null) score += 1;
     if (_ig_nrcb != null) score += 1;
-    
+
     if (score >= 6) return 'Excellent';
     if (score >= 4) return 'Good';
     if (score >= 2) return 'Fair';
@@ -313,17 +336,17 @@ class InstagramService {
         parsedCookies[name] = value;
       }
     }
-    
+
     // Extract known Instagram cookies
     _sessionId = parsedCookies['sessionid'];
     _csrfToken = parsedCookies['csrftoken'];
     _mid = parsedCookies['mid'];
     _ig_did = parsedCookies['ig_did'];
     _ig_nrcb = parsedCookies['ig_nrcb'];
-    
+
     // Log what we extracted
     print('   • Extracted cookies: ${parsedCookies.keys.toList()}');
-    
+
     // If we didn't get a CSRF token, generate a fallback
     if (_csrfToken == null || _csrfToken!.isEmpty) {
       _csrfToken = 'generated_${DateTime.now().millisecondsSinceEpoch}';
@@ -619,49 +642,95 @@ class InstagramService {
     }
   }
 
-  /// Check network connectivity before making requests
+  /// Check network connectivity before making requests - Optimized for release mode
   static Future<bool> _checkConnectivity() async {
-    print('   • Testing DNS resolution with google.com...');
+    print('   • Testing network connectivity (release-mode optimized)...');
+
+    // First try a lightweight HTTP HEAD request to Instagram directly
     try {
-      final result = await InternetAddress.lookup('google.com')
-          .timeout(Duration(seconds: 10));
-      if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
-        print('   • ✅ DNS lookup successful: ${result[0].address}');
+      print('   • Attempting lightweight connectivity check to Instagram...');
+      final client = http.Client();
+      final request = http.Request(
+        'HEAD',
+        Uri.parse('https://www.instagram.com'),
+      );
+      request.headers.addAll({
+        'User-Agent': _selectOptimalUserAgent(),
+        'Connection': 'close',
+      });
+
+      final streamedResponse = await client
+          .send(request)
+          .timeout(Duration(seconds: 8));
+      client.close();
+
+      if (streamedResponse.statusCode >= 200 &&
+          streamedResponse.statusCode < 500) {
+        print(
+          '   • ✅ Instagram connectivity check successful (${streamedResponse.statusCode})',
+        );
         return true;
       } else {
-        print('   • ❌ DNS lookup returned empty result');
-        return false;
+        print(
+          '   • ⚠️ Instagram returned ${streamedResponse.statusCode}, trying fallback...',
+        );
       }
     } catch (e) {
-      print('   • ❌ DNS lookup failed: $e');
-      
-      // Try alternative connectivity check with a simple HTTP request
-      print('   • 🔄 Trying alternative connectivity check...');
+      print(
+        '   • ⚠️ Instagram HEAD request failed: ${e.toString().substring(0, 100)}...',
+      );
+    }
+
+    // Fallback to multiple HTTP-based checks (no DNS lookup)
+    final testUrls = [
+      'https://www.google.com',
+      'https://httpbin.org/status/200',
+      'https://api.github.com',
+    ];
+
+    print('   • 🔄 Trying fallback connectivity checks...');
+    for (int i = 0; i < testUrls.length; i++) {
       try {
-        final response = await http.get(
-          Uri.parse('https://www.google.com'),
-          headers: {'User-Agent': _selectOptimalUserAgent()},
-        ).timeout(Duration(seconds: 10));
-        
-        if (response.statusCode == 200) {
-          print('   • ✅ Alternative HTTP check successful');
+        final response = await http
+            .get(
+              Uri.parse(testUrls[i]),
+              headers: {
+                'User-Agent': _selectOptimalUserAgent(),
+                'Connection': 'close',
+              },
+            )
+            .timeout(Duration(seconds: 6));
+
+        if (response.statusCode >= 200 && response.statusCode < 500) {
+          print(
+            '   • ✅ Fallback connectivity check successful (${testUrls[i]} -> ${response.statusCode})',
+          );
           return true;
-        } else {
-          print('   • ❌ Alternative HTTP check failed: ${response.statusCode}');
-          return false;
         }
-      } catch (httpError) {
-        print('   • ❌ Alternative HTTP check failed: $httpError');
-        print('   • 💡 This might be a network configuration issue');
-        print('   • 💡 Try switching between WiFi and mobile data');
-        return false;
+      } catch (e) {
+        print(
+          '   • ❌ Fallback ${i + 1} failed: ${e.toString().substring(0, 50)}...',
+        );
+        if (i < testUrls.length - 1) {
+          await Future.delayed(
+            Duration(milliseconds: 500),
+          ); // Brief delay between attempts
+        }
       }
     }
+
+    print('   • 🔴 All connectivity checks failed');
+    print('   • 💡 Network may be restricted or device is offline');
+    print('   • 💡 Try switching between WiFi and mobile data');
+    return false;
   }
 
   /// Simplified method to get Instagram post/reel data using direct approach
   /// Primary method: Try GraphQL API first, fallback to HTML parsing with retry logic
-  Future<InstagramPostData> getPostData(String postUrl, {bool skipConnectivityCheck = false}) async {
+  Future<InstagramPostData> getPostData(
+    String postUrl, {
+    bool skipConnectivityCheck = false,
+  }) async {
     print('\n' + '=' * 60);
     print('🚀 STARTING INSTAGRAM REEL DOWNLOAD PROCESS');
     print('=' * 60);
@@ -671,27 +740,37 @@ class InstagramService {
     print('🚀 Skip Connectivity Check: $skipConnectivityCheck');
 
     final selectedUA = _selectOptimalUserAgent();
-    
+
     // Check network connectivity first (unless skipped)
     if (!skipConnectivityCheck) {
       print('\n🔍 CHECKING NETWORK CONNECTIVITY...');
-      if (!await _checkConnectivity()) {
-        print('🔴 Network connectivity check FAILED');
-        print('\n💡 CONNECTIVITY TROUBLESHOOTING:');
-        print('   • Check if you have an active internet connection');
-        print('   • Try switching between WiFi and mobile data');
-        print('   • Disable VPN if enabled and try again');
-        print('   • Check if your firewall is blocking the app');
-        print('   • Restart your router/modem if using WiFi');
-        print('   • You can retry with skipConnectivityCheck=true if needed');
-        
-        throw Exception(
-          'No internet connection detected. Please check your network settings and try again.',
+      try {
+        if (!await _checkConnectivity()) {
+          print('🔴 Network connectivity check FAILED');
+          print('\n💡 CONNECTIVITY TROUBLESHOOTING:');
+          print('   • Check if you have an active internet connection');
+          print('   • Try switching between WiFi and mobile data');
+          print('   • Disable VPN if enabled and try again');
+          print('   • Check if your firewall is blocking the app');
+          print('   • Restart your router/modem if using WiFi');
+          print('   • Retrying automatically without connectivity check...');
+
+          // Auto-retry without connectivity check for release mode compatibility
+          print(
+            '\n🔄 AUTO-RETRY: Attempting without connectivity check for release mode...',
+          );
+          return await getPostData(postUrl, skipConnectivityCheck: true);
+        }
+        print(
+          '🟢 Network connectivity check PASSED - Internet connection available',
         );
+      } catch (connectivityError) {
+        print('⚠️ Connectivity check failed with error: $connectivityError');
+        print(
+          '🔄 Proceeding without connectivity check (release mode compatibility)...',
+        );
+        // Don't throw here, just proceed without connectivity check
       }
-      print(
-        '🟢 Network connectivity check PASSED - Internet connection available',
-      );
     } else {
       print('\n⚠️ SKIPPING NETWORK CONNECTIVITY CHECK (as requested)');
     }
@@ -708,44 +787,84 @@ class InstagramService {
     // Try extraction with retry logic
     return await _performExtractionWithRetry(postUrl, selectedUA);
   }
-  
+
+  /// Release-mode optimized method that automatically handles connectivity issues
+  Future<InstagramPostData> getPostDataOptimized(String postUrl) async {
+    try {
+      // First attempt with connectivity check
+      return await getPostData(postUrl, skipConnectivityCheck: false);
+    } on Exception catch (e) {
+      final errorString = e.toString().toLowerCase();
+
+      // If it's a connectivity-related error, retry without connectivity check
+      if (errorString.contains('no internet') ||
+          errorString.contains('dns') ||
+          errorString.contains('network') ||
+          errorString.contains('connectivity') ||
+          errorString.contains('failed host lookup')) {
+        print(
+          '\n🔄 RELEASE MODE OPTIMIZATION: Retrying without connectivity check...',
+        );
+        return await getPostData(postUrl, skipConnectivityCheck: true);
+      }
+
+      // If it's not a connectivity issue, rethrow
+      rethrow;
+    }
+  }
+
   /// Perform extraction with retry logic and exponential backoff
-  Future<InstagramPostData> _performExtractionWithRetry(String postUrl, String userAgent) async {
+  Future<InstagramPostData> _performExtractionWithRetry(
+    String postUrl,
+    String userAgent,
+  ) async {
     const maxRetries = 3;
     const baseDelaySeconds = 2;
     String currentUserAgent = userAgent;
-    
+
     for (int attempt = 1; attempt <= maxRetries; attempt++) {
       print('\n🔄 EXTRACTION ATTEMPT $attempt/$maxRetries');
       print('=' * 50);
-      
+
       try {
         // Strategy 1: Try GraphQL API first
-        if (attempt <= 2) { // Try GraphQL for first 2 attempts
+        if (attempt <= 2) {
+          // Try GraphQL for first 2 attempts
           try {
             print('\n🔄 ATTEMPTING STRATEGY 1: GraphQL API');
             print('-' * 40);
-            
-            final postData = await _tryGraphQLExtraction(postUrl, currentUserAgent);
+
+            final postData = await _tryGraphQLExtraction(
+              postUrl,
+              currentUserAgent,
+            );
             if (postData.videoUrl != null && postData.videoUrl!.isNotEmpty) {
               _recordUserAgentResult(currentUserAgent, true);
               print('🟢 ✅ GRAPHQL STRATEGY SUCCESS!');
               print('📊 EXTRACTED DATA:');
               print('   • Video URL: ${postData.videoUrl}');
               print('   • Username: ${postData.username ?? "N/A"}');
-              print('   • Caption: ${postData.caption?.substring(0, math.min(50, postData.caption!.length)) ?? "N/A"}...');
+              print(
+                '   • Caption: ${postData.caption?.substring(0, math.min(50, postData.caption!.length)) ?? "N/A"}...',
+              );
               print('=' * 60);
               return postData;
             }
           } catch (e) {
             print('🔴 GraphQL Strategy FAILED: $e');
-            
+
             // Check if it's a rate limiting error (should not retry immediately)
-            if (e.toString().contains('429') || e.toString().contains('rate limit')) {
+            if (e.toString().contains('429') ||
+                e.toString().contains('rate limit')) {
               print('🔴 Rate limiting detected - extending delay before retry');
               if (attempt < maxRetries) {
-                final extendedDelay = baseDelaySeconds * math.pow(2, attempt) * 3; // 3x longer for rate limits
-                print('⏳ Extended delay: ${extendedDelay.toInt()}s for rate limiting');
+                final extendedDelay =
+                    baseDelaySeconds *
+                    math.pow(2, attempt) *
+                    3; // 3x longer for rate limits
+                print(
+                  '⏳ Extended delay: ${extendedDelay.toInt()}s for rate limiting',
+                );
                 await Future.delayed(Duration(seconds: extendedDelay.toInt()));
               }
               if (attempt == maxRetries) rethrow; // Give up after max retries
@@ -758,17 +877,20 @@ class InstagramService {
         try {
           print('\n🔄 ATTEMPTING STRATEGY 2: HTML Parsing Fallback');
           print('-' * 40);
-          
+
           // For retries, try different user agent types
           if (attempt > 1) {
             final preference = attempt == 2 ? 'desktop' : 'mobile';
             currentUserAgent = _selectOptimalUserAgent(preference: preference);
             print('   • Retry $attempt: Switching to $preference user agent');
           }
-          
-          final videoUrl = await resolveDirectVideoUrl(postUrl, customUserAgent: currentUserAgent);
+
+          final videoUrl = await resolveDirectVideoUrl(
+            postUrl,
+            customUserAgent: currentUserAgent,
+          );
           final shortcode = InstagramUtils.extractShortcodeFromUrl(postUrl);
-          
+
           final finalPostData = InstagramPostData(
             videoUrl: videoUrl.toString(),
             isVideo: true,
@@ -786,50 +908,59 @@ class InstagramService {
           return finalPostData;
         } catch (e) {
           print('🔴 HTML Parsing Strategy FAILED: $e');
-          
+
           // Check if this is a content quality issue
-          if (e.toString().contains('incomplete page content') || 
+          if (e.toString().contains('incomplete page content') ||
               e.toString().contains('anti-bot protection')) {
-            print('🔴 Content quality issue detected - likely Instagram blocking');
-            
+            print(
+              '🔴 Content quality issue detected - likely Instagram blocking',
+            );
+
             if (attempt < maxRetries) {
               // For content quality issues, wait longer and try different approach
               final extendedDelay = baseDelaySeconds * math.pow(2, attempt) * 2;
-              print('⏳ Extended delay for anti-bot protection: ${extendedDelay.toInt()}s');
+              print(
+                '⏳ Extended delay for anti-bot protection: ${extendedDelay.toInt()}s',
+              );
               await Future.delayed(Duration(seconds: extendedDelay.toInt()));
-              
+
               // Clear session for next attempt
               if (attempt == 2) {
                 print('🗑️ Clearing session to try fresh authentication');
                 _clearSession();
               }
-              
+
               continue;
             }
           }
-          
+
           // Check if we should retry
           if (attempt < maxRetries) {
             // Calculate exponential backoff delay
-            final delaySeconds = (baseDelaySeconds * math.pow(2, attempt - 1)).toInt();
-            print('🔄 RETRY LOGIC: Attempt $attempt failed, retrying in ${delaySeconds}s...');
-            print('   • Error: ${e.toString().substring(0, math.min(100, e.toString().length))}...');
-            
+            final delaySeconds =
+                (baseDelaySeconds * math.pow(2, attempt - 1)).toInt();
+            print(
+              '🔄 RETRY LOGIC: Attempt $attempt failed, retrying in ${delaySeconds}s...',
+            );
+            print(
+              '   • Error: ${e.toString().substring(0, math.min(100, e.toString().length))}...',
+            );
+
             // Add jitter to prevent thundering herd
             final jitter = _random.nextInt(2);
             await Future.delayed(Duration(seconds: delaySeconds + jitter));
-            
+
             continue; // Retry
           } else {
             // Final attempt failed
             _recordUserAgentResult(currentUserAgent, false);
-            
+
             // Provide comprehensive error information
             showInstagramTroubleshooting(
               errorType: 'All Strategies Failed After $maxRetries Attempts',
               specificError: e.toString(),
             );
-            
+
             throw Exception(
               'Failed to download reel after $maxRetries attempts using both GraphQL and HTML strategies. '
               'Instagram may be actively blocking access or the content may be restricted. '
@@ -844,27 +975,31 @@ class InstagramService {
           _recordUserAgentResult(currentUserAgent, false);
           rethrow;
         }
-        
+
         print('🔴 Unexpected error on attempt $attempt: $e');
-        final delaySeconds = (baseDelaySeconds * math.pow(2, attempt - 1)).toInt();
+        final delaySeconds =
+            (baseDelaySeconds * math.pow(2, attempt - 1)).toInt();
         await Future.delayed(Duration(seconds: delaySeconds));
       }
     }
-    
+
     // This should never be reached, but just in case
     throw Exception('Max retries exceeded without successful extraction');
   }
-  
+
   /// GraphQL API extraction method
-  Future<InstagramPostData> _tryGraphQLExtraction(String postUrl, String userAgent) async {
+  Future<InstagramPostData> _tryGraphQLExtraction(
+    String postUrl,
+    String userAgent,
+  ) async {
     final shortcode = InstagramUtils.extractShortcodeFromUrl(postUrl);
     final graphqlData = InstagramUtils.encodeGraphqlRequestData(shortcode);
-    
+
     print('📝 GraphQL REQUEST DETAILS:');
     print('   • Shortcode: $shortcode');
     print('   • User Agent: ${userAgent.substring(0, 50)}...');
     print('   • Endpoint: https://www.instagram.com/api/graphql/');
-    
+
     final headers = {
       'User-Agent': userAgent,
       'Accept': '*/*',
@@ -881,7 +1016,7 @@ class InstagramService {
       'Sec-Fetch-Mode': 'cors',
       'Sec-Fetch-Site': 'same-origin',
     };
-    
+
     // Add session cookies if available
     if (_csrfToken != null) {
       headers['X-CSRFToken'] = _csrfToken!;
@@ -893,36 +1028,48 @@ class InstagramService {
         headers['Cookie'] = cookieParts.join('; ');
       }
     }
-    
+
     print('🔄 Sending GraphQL request...');
-    
-    final response = await http.post(
-      Uri.parse('https://www.instagram.com/api/graphql/'),
-      headers: headers,
-      body: graphqlData,
-    ).timeout(
-      Duration(seconds: 30),
-      onTimeout: () {
-        throw Exception('GraphQL request timed out after 30 seconds');
-      },
-    );
-    
+
+    final response = await http
+        .post(
+          Uri.parse('https://www.instagram.com/api/graphql/'),
+          headers: headers,
+          body: graphqlData,
+        )
+        .timeout(
+          Duration(seconds: 30),
+          onTimeout: () {
+            throw Exception('GraphQL request timed out after 30 seconds');
+          },
+        );
+
     print('📊 GraphQL Response:');
     print('   • Status Code: ${response.statusCode}');
     print('   • Content Length: ${response.body.length}');
-    print('   • Content-Type: ${response.headers['content-type'] ?? "unknown"}');
-    
+    print(
+      '   • Content-Type: ${response.headers['content-type'] ?? "unknown"}',
+    );
+
     if (response.statusCode != 200) {
-      throw Exception('GraphQL API returned status ${response.statusCode}: ${response.reasonPhrase}');
+      throw Exception(
+        'GraphQL API returned status ${response.statusCode}: ${response.reasonPhrase}',
+      );
     }
-    
+
     // Check if response is HTML (indicates blocking)
     if (response.body.trim().startsWith('<')) {
-      print('🔴 Instagram returned HTML instead of JSON - Anti-bot protection active!');
-      print('🔴 Full HTML response (first 1000 chars): ${response.body.substring(0, math.min(1000, response.body.length))}');
-      throw Exception('Instagram is blocking API access - returned HTML instead of JSON');
+      print(
+        '🔴 Instagram returned HTML instead of JSON - Anti-bot protection active!',
+      );
+      print(
+        '🔴 Full HTML response (first 1000 chars): ${response.body.substring(0, math.min(1000, response.body.length))}',
+      );
+      throw Exception(
+        'Instagram is blocking API access - returned HTML instead of JSON',
+      );
     }
-    
+
     // Parse JSON response
     Map<String, dynamic> jsonData;
     try {
@@ -931,10 +1078,12 @@ class InstagramService {
       print('🟢 JSON Keys: ${jsonData.keys.toList()}');
     } catch (e) {
       print('🔴 JSON Parse Error: $e');
-      print('🔴 Raw response that failed to parse (first 1000 chars): ${response.body.substring(0, math.min(1000, response.body.length))}');
+      print(
+        '🔴 Raw response that failed to parse (first 1000 chars): ${response.body.substring(0, math.min(1000, response.body.length))}',
+      );
       throw Exception('Invalid JSON response from GraphQL API');
     }
-    
+
     // Extract data from GraphQL response
     final data = jsonData['data'] as Map<String, dynamic>?;
     if (data == null) {
@@ -942,24 +1091,27 @@ class InstagramService {
       print('🔴 Available keys: ${jsonData.keys.toList()}');
       throw Exception('GraphQL response missing data field');
     }
-    
+
     print('🟢 Data field exists: ${data.runtimeType}');
     print('🟢 Data keys: ${data.keys.toList()}');
-    
+
     final mediaData = data['xdt_shortcode_media'] as Map<String, dynamic>?;
     if (mediaData == null) {
       print('🔴 No xdt_shortcode_media found in response');
       print('🔴 Available data keys: ${data.keys.toList()}');
       throw Exception('No media data found in GraphQL response');
     }
-    
+
     print('🟢 Media data found: ${mediaData.keys.toList()}');
-    
+
     return InstagramPostData.fromGraphQL(mediaData);
   }
 
   /// Resolves direct video URL from Instagram post/reel URL using HTML parsing
-  Future<Uri> resolveDirectVideoUrl(String reelUrl, {String? customUserAgent}) async {
+  Future<Uri> resolveDirectVideoUrl(
+    String reelUrl, {
+    String? customUserAgent,
+  }) async {
     print('\n' + '=' * 60);
     print('🚀 STARTING HTML REQUEST');
     print('=' * 60);
@@ -1112,12 +1264,12 @@ class InstagramService {
     print('   • Quality score: ${contentQuality['score']}/10');
     print('   • Has video indicators: ${contentQuality['hasVideoIndicators']}');
     print('   • Page completeness: ${contentQuality['pageCompleteness']}');
-    
+
     // If content quality is too low, throw specific error
     if (contentQuality['score'] < 3) {
       throw Exception(
         'Instagram returned incomplete page content (score: ${contentQuality['score']}/10). '
-        'This typically indicates anti-bot protection is active. Try again in a few minutes.'
+        'This typically indicates anti-bot protection is active. Try again in a few minutes.',
       );
     }
 
@@ -1160,7 +1312,7 @@ class InstagramService {
       print('🟢 ✅ STRATEGY 4 SUCCESS!');
       return Uri.parse(_unescapeUrl(alternativeUrl));
     }
-    
+
     // Strategy 5: Enhanced pattern matching for newer Instagram formats
     print('\n' + '-' * 30);
     print('🔍 TRYING STRATEGY 5: Enhanced pattern matching');
@@ -1172,82 +1324,92 @@ class InstagramService {
     }
 
     print('\n🔴 ❌ ALL STRATEGIES FAILED');
-    
+
     // Provide detailed failure analysis
     final failureAnalysis = _analyzeExtractionFailure(html);
     print('\n🔍 FAILURE ANALYSIS:');
     failureAnalysis.forEach((key, value) => print('   • $key: $value'));
-    
+
     throw Exception(
       'Could not find a direct video URL. Failure analysis: ${failureAnalysis['summary']}',
     );
   }
-  
+
   /// Analyze HTML content quality to detect Instagram blocking
   Map<String, dynamic> _analyzeHtmlContent(String html) {
     int score = 0;
     final analysis = <String, dynamic>{};
-    
+
     // Check for basic HTML structure
     if (html.contains('<!DOCTYPE html>') || html.contains('<html')) score += 1;
-    
+
     // Check for Instagram-specific elements
     if (html.contains('instagram.com')) score += 1;
     if (html.contains('og:site_name')) score += 1;
     if (html.contains('og:title')) score += 1;
-    
+
     // Check for video-related content
     bool hasVideoIndicators = false;
-    if (html.contains('og:video') || html.contains('video_url') || 
-        html.contains('playback_url') || html.contains('.mp4')) {
+    if (html.contains('og:video') ||
+        html.contains('video_url') ||
+        html.contains('playback_url') ||
+        html.contains('.mp4')) {
       score += 2;
       hasVideoIndicators = true;
     }
-    
+
     // Check for Instagram app data
-    if (html.contains('window._sharedData') || html.contains('window.__additionalDataLoaded')) {
+    if (html.contains('window._sharedData') ||
+        html.contains('window.__additionalDataLoaded')) {
       score += 2;
     }
-    
+
     // Check content size (smaller pages are often blocked/limited)
-    if (html.length > 500000) score += 2;
-    else if (html.length > 200000) score += 1;
-    
+    if (html.length > 500000)
+      score += 2;
+    else if (html.length > 200000)
+      score += 1;
+
     // Check for login requirements
-    bool requiresLogin = html.contains('loginForm') || html.contains('Login • Instagram');
+    bool requiresLogin =
+        html.contains('loginForm') || html.contains('Login • Instagram');
     if (requiresLogin) score -= 2;
-    
+
     // Page completeness
     String pageCompleteness = 'Unknown';
-    if (html.length < 100000) pageCompleteness = 'Minimal';
-    else if (html.length < 300000) pageCompleteness = 'Partial';
-    else if (html.length < 600000) pageCompleteness = 'Standard';
-    else pageCompleteness = 'Full';
-    
+    if (html.length < 100000)
+      pageCompleteness = 'Minimal';
+    else if (html.length < 300000)
+      pageCompleteness = 'Partial';
+    else if (html.length < 600000)
+      pageCompleteness = 'Standard';
+    else
+      pageCompleteness = 'Full';
+
     analysis['score'] = math.max(0, score);
     analysis['hasVideoIndicators'] = hasVideoIndicators;
     analysis['requiresLogin'] = requiresLogin;
     analysis['pageCompleteness'] = pageCompleteness;
     analysis['contentSize'] = html.length;
-    
+
     return analysis;
   }
-  
+
   /// Enhanced video URL finding with additional patterns
   String? _findEnhancedVideoUrl(String html) {
     final patterns = [
       // Instagram CDN patterns
       RegExp(r'"([^"]*instagram[^"]*\.fna\.fbcdn\.net[^"]*\.mp4[^"]*?)"'),
       RegExp(r'"([^"]*scontent[^"]*instagram[^"]*\.mp4[^"]*?)"'),
-      
+
       // Video manifest patterns
       RegExp(r'"video_url"\s*:\s*"([^"]+?)"'),
       RegExp(r'"playback_url"\s*:\s*"([^"]+?)"'),
-      
+
       // Data attribute patterns
       RegExp(r'data-video-url="([^"]+?)"'),
       RegExp(r'data-src="([^"]+?\.mp4[^"]*?)"'),
-      
+
       // Script tag patterns
       RegExp(r'src:\s*"([^"]+?\.mp4[^"]*?)"'),
       RegExp(r'url:\s*"([^"]+?\.mp4[^"]*?)"'),
@@ -1265,47 +1427,50 @@ class InstagramService {
     }
     return null;
   }
-  
+
   /// Analyze why extraction failed
   Map<String, String> _analyzeExtractionFailure(String html) {
     final analysis = <String, String>{};
-    
+
     if (html.length < 100000) {
-      analysis['Page Size'] = 'Too small (${html.length} chars) - likely blocked content';
+      analysis['Page Size'] =
+          'Too small (${html.length} chars) - likely blocked content';
     } else {
       analysis['Page Size'] = 'Normal (${html.length} chars)';
     }
-    
+
     if (html.contains('Login • Instagram')) {
       analysis['Login Required'] = 'Yes - Instagram requires authentication';
     } else {
       analysis['Login Required'] = 'No';
     }
-    
+
     if (!html.contains('og:video') && !html.contains('video_url')) {
       analysis['Video Metadata'] = 'Missing - no video metadata found';
     } else {
       analysis['Video Metadata'] = 'Present but inaccessible';
     }
-    
-    if (html.contains('private account') || html.contains('This account is private')) {
+
+    if (html.contains('private account') ||
+        html.contains('This account is private')) {
       analysis['Account Status'] = 'Private account';
     } else {
       analysis['Account Status'] = 'Public account';
     }
-    
+
     // Determine most likely cause
     String summary;
     if (html.length < 200000) {
-      summary = 'Instagram anti-bot protection active (lightweight page served)';
+      summary =
+          'Instagram anti-bot protection active (lightweight page served)';
     } else if (html.contains('Login')) {
       summary = 'Login required for this content';
     } else {
       summary = 'Video metadata present but extraction patterns failed';
     }
-    
+
     analysis['summary'] = summary;
-    
+
     return analysis;
   }
 
@@ -1364,14 +1529,16 @@ class InstagramService {
       return s.replaceAll(r'\/', '/').replaceAll(r'\u0026', '&');
     }
   }
-  
+
   /// Manually clear session data (useful for troubleshooting)
   static void clearSession() {
     print('🗑️ Manually clearing Instagram session data...');
     _clearSession();
-    print('✅ Session data cleared. Next request will initialize a fresh session.');
+    print(
+      '✅ Session data cleared. Next request will initialize a fresh session.',
+    );
   }
-  
+
   /// Get current session status for debugging
   static Map<String, dynamic> getSessionStatus() {
     return {
@@ -1381,27 +1548,39 @@ class InstagramService {
       'isValid': _isSessionValid(),
       'quality': _assessSessionQuality(),
       'cookies': {
-        'sessionid': _sessionId != null ? '${_sessionId!.substring(0, math.min(8, _sessionId!.length))}...' : null,
-        'csrftoken': _csrfToken != null ? '${_csrfToken!.substring(0, math.min(8, _csrfToken!.length))}...' : null,
-        'mid': _mid != null ? '${_mid!.substring(0, math.min(8, _mid!.length))}...' : null,
+        'sessionid':
+            _sessionId != null
+                ? '${_sessionId!.substring(0, math.min(8, _sessionId!.length))}...'
+                : null,
+        'csrftoken':
+            _csrfToken != null
+                ? '${_csrfToken!.substring(0, math.min(8, _csrfToken!.length))}...'
+                : null,
+        'mid':
+            _mid != null
+                ? '${_mid!.substring(0, math.min(8, _mid!.length))}...'
+                : null,
         'ig_did': _ig_did != null,
         'ig_nrcb': _ig_nrcb != null,
-      }
+      },
     };
   }
-  
+
   /// Legacy method for backward compatibility - downloads reel and returns video URL
   Future<String> downloadReel(
     String postUrl, {
     bool skipConnectivityCheck = false,
   }) async {
     try {
-      final postData = await getPostData(postUrl, skipConnectivityCheck: skipConnectivityCheck);
-      
+      final postData = await getPostData(
+        postUrl,
+        skipConnectivityCheck: skipConnectivityCheck,
+      );
+
       if (postData.videoUrl == null || postData.videoUrl!.isEmpty) {
         throw Exception('No video URL found in post data');
       }
-      
+
       return postData.videoUrl!;
     } catch (e) {
       // Enhanced error handling for legacy method
@@ -1412,7 +1591,7 @@ class InstagramService {
           'Please wait 10-15 minutes before trying again.',
         );
       }
-      
+
       if (e.toString().contains('Could not find a direct video URL')) {
         throw Exception(
           'Could not extract video URL from Instagram. '
@@ -1428,27 +1607,27 @@ class InstagramService {
       );
     }
   }
-  
+
   /// Test method to verify improvements
   static Future<void> testReliabilityImprovements(String testUrl) async {
     print('\n' + '=' * 70);
     print('🧪 TESTING RELIABILITY IMPROVEMENTS');
     print('=' * 70);
-    
+
     // Test user agent selection
     print('\n1. 🎯 TESTING USER AGENT SELECTION:');
     for (int i = 0; i < 3; i++) {
       final ua = _selectOptimalUserAgent();
       print('   Selection $i: ${ua.substring(0, math.min(60, ua.length))}...');
     }
-    
+
     // Test session management
     print('\n2. 🔐 TESTING SESSION MANAGEMENT:');
     final sessionStatus = getSessionStatus();
     print('   Session Valid: ${sessionStatus['isValid']}');
     print('   Session Quality: ${sessionStatus['quality']}');
     print('   Has CSRF Token: ${sessionStatus['hasCSRFToken']}');
-    
+
     // Test enhanced extraction
     print('\n3. 🔍 TESTING ENHANCED EXTRACTION:');
     try {
@@ -1456,11 +1635,13 @@ class InstagramService {
       print('   Testing with URL: $testUrl');
       final result = await service.getPostData(testUrl);
       print('   ✅ SUCCESS: Extracted video URL');
-      print('   Video URL: ${result.videoUrl?.substring(0, math.min(100, result.videoUrl!.length))}...');
+      print(
+        '   Video URL: ${result.videoUrl?.substring(0, math.min(100, result.videoUrl!.length))}...',
+      );
     } catch (e) {
       print('   ❌ FAILED: $e');
     }
-    
+
     print('\n' + '=' * 70);
   }
 }

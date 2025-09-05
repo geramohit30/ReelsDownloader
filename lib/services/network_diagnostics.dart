@@ -8,7 +8,7 @@ class NetworkDiagnostics {
     // Test 1: Basic internet connectivity
     try {
       final googleResult = await InternetAddress.lookup(
-        'google.com',
+        'www.google.com',
       ).timeout(const Duration(seconds: 10));
       result.hasBasicInternet =
           googleResult.isNotEmpty && googleResult[0].rawAddress.isNotEmpty;

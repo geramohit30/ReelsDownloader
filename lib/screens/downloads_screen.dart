@@ -77,7 +77,7 @@ class DownloadsScreen extends StatelessWidget {
                 Text(
                   '$itemCount ${itemCount == 1 ? 'video' : 'videos'} saved',
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey.shade600,
+                    color: theme.colorScheme.onSurface.withOpacity(0.7),
                   ),
                 ),
               ],
@@ -128,7 +128,7 @@ class DownloadsScreen extends StatelessWidget {
               'Downloaded Instagram Reels will appear here.\nGo to Home tab to start downloading!',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyLarge?.copyWith(
-                color: Colors.grey.shade600,
+                color: theme.colorScheme.onSurface.withOpacity(0.7),
                 height: 1.5,
               ),
             ),
@@ -526,7 +526,9 @@ class DownloadsScreen extends StatelessWidget {
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
