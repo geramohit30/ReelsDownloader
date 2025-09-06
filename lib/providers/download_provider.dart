@@ -3,23 +3,68 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/reel_item.dart';
+import '../models/instagram_types.dart';
 import '../services/download_service.dart';
+import '../services/instagram_service.dart';
 import '../services/network_diagnostics.dart';
 import '../services/instagram_error_handler.dart';
+import '../services/instagram_utils.dart';
 
 class DownloadProvider extends ChangeNotifier {
   final List<ReelItem> _items = [];
   final DownloadService _downloadService = DownloadService();
+  final InstagramService _instagramService = InstagramService();
   double? _activeProgress; // 0..1
   bool _isDownloading = false;
+  bool _isFetchingPreview = false;
   String? _errorMessage;
 
   List<ReelItem> get items => List.unmodifiable(_items);
   double? get activeProgress => _activeProgress;
   bool get isDownloading => _isDownloading;
+  bool get isFetchingPreview => _isFetchingPreview;
   String? get errorMessage => _errorMessage;
 
   static const _prefsKey = 'downloads_v1';
+
+  /// Fetches reel data for preview without downloading
+  Future<InstagramPostData> fetchReelForPreview(String reelUrl) async {
+    if (!InstagramUtils.isInstagramUrl(reelUrl)) {
+      throw Exception('Invalid Instagram URL');
+    }
+
+    _isFetchingPreview = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      final postData = await _instagramService.getPostDataOptimized(reelUrl);
+      return postData;
+    } catch (e) {
+      final exception = e is Exception ? e : Exception(e.toString());
+
+      if (InstagramErrorHandler.isNetworkIssue(exception)) {
+        try {
+          final diagnostics = await NetworkDiagnostics.runDiagnostics();
+          final report = NetworkDiagnostics.generateTroubleshootingReport(
+            diagnostics,
+          );
+          _errorMessage = 'Network Connection Issue\n\n$report';
+        } catch (diagError) {
+          _errorMessage = InstagramErrorHandler.getHelpfulErrorMessage(
+            exception,
+          );
+        }
+      } else {
+        _errorMessage = InstagramErrorHandler.getHelpfulErrorMessage(exception);
+      }
+
+      rethrow;
+    } finally {
+      _isFetchingPreview = false;
+      notifyListeners();
+    }
+  }
 
   /// Downloads a reel from Instagram URL
   Future<void> downloadReel(String reelUrl) async {
@@ -128,6 +173,11 @@ class DownloadProvider extends ChangeNotifier {
 
   void setIsDownloading(bool v) {
     _isDownloading = v;
+    notifyListeners();
+  }
+
+  void setIsFetchingPreview(bool v) {
+    _isFetchingPreview = v;
     notifyListeners();
   }
 }

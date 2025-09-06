@@ -5,6 +5,7 @@ import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import '../providers/download_provider.dart';
 import '../services/instagram_utils.dart';
 import 'network_test_screen.dart';
+import 'preview_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -37,16 +38,23 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     try {
-      await provider.downloadReel(input);
+      // Fetch reel data for preview
+      final postData = await provider.fetchReelForPreview(input);
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Downloaded successfully!'),
-          backgroundColor: Colors.green,
+      // Navigate to preview screen
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder:
+              (context) => PreviewScreen(reelUrl: input, postData: postData),
         ),
       );
-      _ctrl.clear();
+
+      // If download was successful, clear the input
+      if (result == true) {
+        _ctrl.clear();
+      }
     } catch (e) {
       if (!mounted) return;
 
@@ -92,7 +100,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     final provider = context.watch<DownloadProvider>();
-    final isBusy = provider.isDownloading;
+    final isBusy = provider.isDownloading || provider.isFetchingPreview;
     final progress = provider.activeProgress;
     final theme = Theme.of(context);
 
@@ -129,8 +137,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 40),
                       _buildUrlInputCard(theme, isBusy),
                       const SizedBox(height: 24),
-                      _buildDownloadButton(theme, isBusy),
-                      if (isBusy) ..._buildProgressIndicator(theme, progress),
+                      _buildDownloadButton(theme, isBusy, provider),
+                      if (isBusy)
+                        ..._buildProgressIndicator(theme, progress, provider),
                       const SizedBox(height: 40),
                       _buildRecentDownloads(theme, provider),
                     ],
@@ -286,7 +295,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDownloadButton(ThemeData theme, bool isBusy) {
+  Widget _buildDownloadButton(
+    ThemeData theme,
+    bool isBusy,
+    DownloadProvider provider,
+  ) {
     return Container(
       width: double.infinity,
       height: 56,
@@ -342,7 +355,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 const SizedBox(width: 12),
                 Text(
-                  isBusy ? 'Processing...' : 'Download Reel',
+                  isBusy
+                      ? (provider.isFetchingPreview
+                          ? 'Fetching...'
+                          : 'Processing...')
+                      : 'Download Reel',
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
@@ -356,10 +373,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  List<Widget> _buildProgressIndicator(ThemeData theme, double? progress) {
+  List<Widget> _buildProgressIndicator(
+    ThemeData theme,
+    double? progress,
+    DownloadProvider provider,
+  ) {
     return [
       const SizedBox(height: 24),
       Card(
+        color: theme.cardColor,
         elevation: 0.5,
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -373,7 +395,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(width: 12),
                   Text(
-                    progress == null
+                    provider.isFetchingPreview
+                        ? 'Fetching reel data...'
+                        : progress == null
                         ? 'Preparing download...'
                         : 'Downloading ${(progress * 100).toStringAsFixed(0)}%',
                     style: theme.textTheme.titleMedium?.copyWith(
@@ -386,7 +410,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: LinearProgressIndicator(
-                  value: progress,
+                  value: provider.isFetchingPreview ? null : progress,
                   minHeight: 8,
                   backgroundColor: theme.colorScheme.primary.withOpacity(0.1),
                   valueColor: AlwaysStoppedAnimation<Color>(
