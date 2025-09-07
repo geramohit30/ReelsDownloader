@@ -8,6 +8,7 @@ import 'package:video_player/video_player.dart';
 
 import '../models/reel_item.dart';
 import '../providers/download_provider.dart';
+import '../widgets/video_controller_factory.dart';
 
 /// A video player screen for displaying downloaded Instagram Reels
 /// with custom controls, progress overlay, and sharing functionality.
@@ -48,7 +49,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   void _initializeVideo() async {
-    _controller = VideoPlayerController.file(File(_item!.filePath));
+    _controller = createVideoController(_item!.filePath);
     await _controller!.initialize();
     if (mounted) {
       setState(() {

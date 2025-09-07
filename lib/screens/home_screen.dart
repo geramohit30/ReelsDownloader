@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +8,7 @@ import '../providers/download_provider.dart';
 import '../services/instagram_utils.dart';
 import 'network_test_screen.dart';
 import 'preview_screen.dart';
+import '../widgets/thumbnail_image.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -503,8 +505,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 separatorBuilder: (_, __) => const SizedBox(width: 12),
                 itemBuilder: (_, index) {
                   final item = provider.items[index];
-                  final hasThumb =
-                      item.thumbnailPath != null && File(item.thumbnailPath!).existsSync();
+                  final hasThumb = item.thumbnailPath != null && item.thumbnailPath!.isNotEmpty;
                   return Container(
                     width: 60,
                     decoration: BoxDecoration(
@@ -526,8 +527,8 @@ class _HomeScreenState extends State<HomeScreen> {
                             fit: StackFit.expand,
                             children: [
                               if (hasThumb)
-                                Image.file(
-                                  File(item.thumbnailPath!),
+                                buildThumbnailImage(
+                                  path: item.thumbnailPath,
                                   fit: BoxFit.cover,
                                 )
                               else

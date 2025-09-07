@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import '../providers/download_provider.dart';
 import 'player_screen.dart';
+import '../widgets/thumbnail_image.dart';
 
 class DownloadsScreen extends StatelessWidget {
   const DownloadsScreen({super.key});
@@ -220,8 +222,7 @@ class DownloadsScreen extends StatelessWidget {
   }
 
   Widget _buildVideoCard(dynamic item, ThemeData theme, BuildContext context) {
-    final hasThumb =
-        item.thumbnailPath != null && File(item.thumbnailPath!).existsSync();
+    final hasThumb = item.thumbnailPath != null && item.thumbnailPath!.isNotEmpty;
 
     return Card(
       elevation: 8,
@@ -277,8 +278,8 @@ class DownloadsScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                     child:
                         hasThumb
-                            ? Image.file(
-                              File(item.thumbnailPath!),
+                            ? buildThumbnailImage(
+                              path: item.thumbnailPath,
                               fit: BoxFit.cover,
                             )
                             : Container(

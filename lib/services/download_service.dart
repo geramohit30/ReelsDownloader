@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import '../models/reel_item.dart';
@@ -27,7 +28,23 @@ class DownloadService {
       throw Exception('Could not find video URL for this reel');
     }
 
-    // Generate filename
+    // On web, do not download to local storage. Use network URLs directly.
+    if (kIsWeb) {
+      if (postData.videoUrl == null || postData.videoUrl!.isEmpty) {
+        throw Exception('Could not find video URL for this reel');
+      }
+      final shortcode =
+          postData.shortcode ?? InstagramUtils.extractShortcodeFromUrl(reelUrl);
+      return ReelItem(
+        id: shortcode,
+        sourceUrl: reelUrl,
+        filePath: postData.videoUrl!,
+        createdAt: DateTime.now(),
+        thumbnailPath: postData.displayUrl,
+      );
+    }
+
+    // Generate filename (mobile/desktop)
     final shortcode =
         postData.shortcode ?? InstagramUtils.extractShortcodeFromUrl(reelUrl);
     final filename =
@@ -42,11 +59,16 @@ class DownloadService {
 
     // Create ReelItem
     String? thumbnailPath;
-    try {
-      thumbnailPath = await _thumbnailService.generate(filePath);
-    } catch (_) {
-      // If thumbnail generation fails, proceed without it
-      thumbnailPath = null;
+    if (kIsWeb) {
+      // On web, use the remote displayUrl as thumbnail
+      thumbnailPath = postData.displayUrl;
+    } else {
+      try {
+        thumbnailPath = await _thumbnailService.generate(filePath);
+      } catch (_) {
+        // If thumbnail generation fails, proceed without it
+        thumbnailPath = null;
+      }
     }
 
     return ReelItem(
