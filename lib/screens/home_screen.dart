@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -502,17 +503,11 @@ class _HomeScreenState extends State<HomeScreen> {
                 separatorBuilder: (_, __) => const SizedBox(width: 12),
                 itemBuilder: (_, index) {
                   final item = provider.items[index];
+                  final hasThumb =
+                      item.thumbnailPath != null && File(item.thumbnailPath!).existsSync();
                   return Container(
                     width: 60,
                     decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          theme.colorScheme.primary.withOpacity(0.8),
-                          theme.colorScheme.secondary.withOpacity(0.8),
-                        ],
-                      ),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Material(
@@ -525,11 +520,44 @@ class _HomeScreenState extends State<HomeScreen> {
                           );
                         },
                         borderRadius: BorderRadius.circular(12),
-                        child: const Center(
-                          child: Icon(
-                            Icons.play_circle_filled_rounded,
-                            color: Colors.white,
-                            size: 28,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              if (hasThumb)
+                                Image.file(
+                                  File(item.thumbnailPath!),
+                                  fit: BoxFit.cover,
+                                )
+                              else
+                                Container(
+                                  decoration: BoxDecoration(
+                                    gradient: LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        theme.colorScheme.primary.withOpacity(0.8),
+                                        theme.colorScheme.secondary.withOpacity(0.8),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              Center(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.35),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  padding: const EdgeInsets.all(4),
+                                  child: const Icon(
+                                    Icons.play_arrow_rounded,
+                                    color: Colors.white,
+                                    size: 18,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),

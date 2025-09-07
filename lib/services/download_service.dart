@@ -4,9 +4,11 @@ import 'package:path_provider/path_provider.dart';
 import '../models/reel_item.dart';
 import 'instagram_service.dart';
 import 'instagram_utils.dart';
+import 'thumbnail_service.dart';
 
 class DownloadService {
   final InstagramService _instagramService = InstagramService();
+  final ThumbnailService _thumbnailService = ThumbnailService();
 
   /// Downloads Instagram reel from URL and returns ReelItem
   Future<ReelItem> downloadInstagramReel({
@@ -39,11 +41,20 @@ class DownloadService {
     );
 
     // Create ReelItem
+    String? thumbnailPath;
+    try {
+      thumbnailPath = await _thumbnailService.generate(filePath);
+    } catch (_) {
+      // If thumbnail generation fails, proceed without it
+      thumbnailPath = null;
+    }
+
     return ReelItem(
       id: shortcode,
       sourceUrl: reelUrl,
       filePath: filePath,
       createdAt: DateTime.now(),
+      thumbnailPath: thumbnailPath,
     );
   }
 
