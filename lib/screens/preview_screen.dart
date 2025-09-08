@@ -102,7 +102,12 @@ class _PreviewScreenState extends State<PreviewScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              SizedBox(height: 400, child: _buildMediaPreview(theme)),
+              Expanded(
+                child: Container(
+                  constraints: const BoxConstraints(maxHeight: 300),
+                  child: _buildMediaPreview(theme),
+                ),
+              ),
               const SizedBox(height: 16),
               // _buildMeta(theme),
               // const SizedBox(height: 24),
