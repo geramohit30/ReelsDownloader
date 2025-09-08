@@ -6,6 +6,7 @@ import '../models/reel_item.dart';
 import '../models/instagram_types.dart';
 import '../services/download_service.dart';
 import '../services/instagram_service.dart';
+import '../services/local_api_service.dart';
 import '../services/network_diagnostics.dart';
 import '../services/instagram_error_handler.dart';
 import '../services/instagram_utils.dart';
@@ -26,6 +27,62 @@ class DownloadProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
 
   static const _prefsKey = 'downloads_v1';
+
+  /// Fetches reel data using local API service
+  Future<InstagramPostData> fetchReelFromLocalApi(String reelUrl) async {
+    if (!InstagramUtils.isInstagramUrl(reelUrl)) {
+      throw Exception('Invalid Instagram URL');
+    }
+
+    _isFetchingPreview = true;
+    _errorMessage = null;
+    notifyListeners();
+
+    try {
+      print('🚀 Using Local API Service for: $reelUrl');
+
+      // First test if the local API is available
+      final isApiAvailable = await LocalApiService.testConnection();
+      if (!isApiAvailable) {
+        throw Exception(
+          'Local API server is not running. Please start your server on localhost:3000 and try again.',
+        );
+      }
+
+      // Fetch reel data from local API
+      final reelData = await LocalApiService.fetchInstagramReel(reelUrl);
+
+      print('✅ Local API returned: ${reelData.toString()}');
+
+      // Convert to InstagramPostData format that the app expects
+      final postData = InstagramPostData(
+        id: reelData.id,
+        shortcode: reelData.id,
+        videoUrl: reelData.mediaUrl,
+        displayUrl: reelData.thumbnailUrl,
+        caption: reelData.title,
+        username: reelData.author,
+        isVideo: true,
+        takenAtTimestamp: DateTime.now(),
+      );
+
+      return postData;
+    } catch (e) {
+      final exception = e is Exception ? e : Exception(e.toString());
+
+      if (e is LocalApiException) {
+        _errorMessage = e.userFriendlyMessage;
+      } else {
+        _errorMessage = 'Local API Error: ${e.toString()}';
+      }
+
+      print('❌ Local API fetch failed: ${e.toString()}');
+      rethrow;
+    } finally {
+      _isFetchingPreview = false;
+      notifyListeners();
+    }
+  }
 
   /// Fetches reel data for preview without downloading
   Future<InstagramPostData> fetchReelForPreview(String reelUrl) async {

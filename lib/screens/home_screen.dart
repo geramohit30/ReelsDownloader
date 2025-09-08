@@ -17,6 +17,7 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _ctrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+  bool _useLocalApi = false; // Toggle for local API
 
   @override
   void dispose() {
@@ -39,8 +40,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     try {
-      // Fetch reel data for preview
-      final postData = await provider.fetchReelForPreview(input);
+      // Choose API based on toggle
+      final postData =
+          _useLocalApi
+              ? await provider.fetchReelFromLocalApi(input)
+              : await provider.fetchReelForPreview(input);
+
       if (!mounted) return;
 
       // Navigate to preview screen
@@ -62,7 +67,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final isNetworkError =
           e.toString().contains('SocketException') ||
           e.toString().contains('Failed host lookup') ||
-          e.toString().contains('Network error');
+          e.toString().contains('Network error') ||
+          e.toString().contains('Local API server');
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -139,6 +145,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       _buildUrlInputCard(theme, isBusy),
                       const SizedBox(height: 24),
                       _buildDownloadButton(theme, isBusy, provider),
+                      const SizedBox(height: 16),
+                      _buildApiToggle(theme),
                       if (isBusy)
                         ..._buildProgressIndicator(theme, progress, provider),
                       const SizedBox(height: 40),
@@ -504,7 +512,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 itemBuilder: (_, index) {
                   final item = provider.items[index];
                   final hasThumb =
-                      item.thumbnailPath != null && File(item.thumbnailPath!).existsSync();
+                      item.thumbnailPath != null &&
+                      File(item.thumbnailPath!).existsSync();
                   return Container(
                     width: 60,
                     decoration: BoxDecoration(
@@ -537,8 +546,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                       begin: Alignment.topLeft,
                                       end: Alignment.bottomRight,
                                       colors: [
-                                        theme.colorScheme.primary.withOpacity(0.8),
-                                        theme.colorScheme.secondary.withOpacity(0.8),
+                                        theme.colorScheme.primary.withOpacity(
+                                          0.8,
+                                        ),
+                                        theme.colorScheme.secondary.withOpacity(
+                                          0.8,
+                                        ),
                                       ],
                                     ),
                                   ),
@@ -566,6 +579,107 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildApiToggle(ThemeData theme) {
+    return Card(
+      color: theme.cardColor,
+      elevation: 0.5,
+      shadowColor: theme.colorScheme.primary.withOpacity(0.2),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.api_rounded,
+                  color: theme.colorScheme.primary,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'API Source',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _useLocalApi ? 'Local API Server' : 'Instagram Direct',
+                        style: theme.textTheme.titleSmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        _useLocalApi
+                            ? 'Using localhost:3000 API server'
+                            : 'Directly fetching from Instagram',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch.adaptive(
+                  value: _useLocalApi,
+                  onChanged: (value) {
+                    setState(() {
+                      _useLocalApi = value;
+                    });
+                    HapticFeedback.lightImpact();
+                  },
+                  activeColor: theme.colorScheme.primary,
+                ),
+              ],
+            ),
+            if (_useLocalApi) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: theme.colorScheme.primary.withOpacity(0.3),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: theme.colorScheme.primary,
+                      size: 16,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Make sure your local API server is running on localhost:3000',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),
