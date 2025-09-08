@@ -2,366 +2,1157 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import '../models/instagram_types.dart';
 import 'instagram_utils.dart';
 
 class InstagramService {
-  // Enhanced user agent pool with better mobile/desktop distribution
-  static final List<Map<String, dynamic>> _userAgentPool = [
-    // Mobile User Agents (Higher success rate for Instagram)
-    {
-      'ua':
-          'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
-      'type': 'mobile',
-      'weight': 3,
-    },
-    {
-      'ua':
-          'Mozilla/5.0 (iPhone; CPU iPhone OS 15_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Mobile/15E148 Safari/604.1',
-      'type': 'mobile',
-      'weight': 2,
-    },
-    {
-      'ua':
-          'Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36',
-      'type': 'mobile',
-      'weight': 3,
-    },
-    {
-      'ua':
-          'Mozilla/5.0 (Linux; Android 12; SM-G991B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.4896.127 Mobile Safari/537.36',
-      'type': 'mobile',
-      'weight': 2,
-    },
-    {
-      'ua':
-          'Mozilla/5.0 (Linux; Android 11; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.101 Mobile Safari/537.36',
-      'type': 'mobile',
-      'weight': 2,
-    },
-    // Desktop User Agents (Fallback options)
-    {
-      'ua':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'type': 'desktop',
-      'weight': 1,
-    },
-    {
-      'ua':
-          'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-      'type': 'desktop',
-      'weight': 1,
-    },
-    {
-      'ua':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/119.0',
-      'type': 'desktop',
-      'weight': 1,
-    },
-  ];
-
-  // Track success rates for each user agent
-  static final Map<String, int> _userAgentSuccess = {};
-  static final Map<String, int> _userAgentAttempts = {};
   static final math.Random _random = math.Random();
-
-  // Session data for Instagram authentication with persistence
-  static String? _sessionId;
-  static String? _csrfToken;
-  static String? _mid;
-  static String? _ig_did;
-  static String? _ig_nrcb;
-  static DateTime? _sessionExpiry;
-  static const int _sessionValidityHours = 6; // Sessions expire after 6 hours
-
-  /// Select user agent based on success rates, weights, and content type preference
-  static String _selectOptimalUserAgent({String preference = 'mobile'}) {
-    // Filter agents by preference
-    List<Map<String, dynamic>> preferredAgents;
-    if (preference == 'desktop') {
-      preferredAgents =
-          _userAgentPool.where((agent) => agent['type'] == 'desktop').toList();
-    } else {
-      preferredAgents =
-          _userAgentPool.where((agent) => agent['type'] == 'mobile').toList();
-    }
-
-    // If no preferred agents, use all
-    if (preferredAgents.isEmpty) preferredAgents = _userAgentPool;
-
-    // Calculate weighted user agents based on success rates
-    final weightedAgents = <String>[];
-
-    for (final agent in preferredAgents) {
-      final ua = agent['ua'] as String;
-      final baseWeight = agent['weight'] as int;
-
-      // Calculate success rate (default to 50% for new agents)
-      final attempts = _userAgentAttempts[ua] ?? 0;
-      final successes = _userAgentSuccess[ua] ?? 0;
-      final successRate = attempts > 0 ? successes / attempts : 0.5;
-
-      // Boost weight for agents with good success rates
-      double adjustedWeight = baseWeight * (1 + successRate);
-
-      // Add recency bonus (prefer recently successful agents)
-      if (attempts > 0 && successes > 0) {
-        adjustedWeight *= 1.2;
-      }
-
-      // Calculate final weight
-      final finalWeight = adjustedWeight.round();
-
-      // Add multiple entries based on weight
-      for (int i = 0; i < finalWeight; i++) {
-        weightedAgents.add(ua);
-      }
-    }
-
-    if (weightedAgents.isEmpty) {
-      // Fallback to first mobile agent
-      return _userAgentPool.first['ua'] as String;
-    }
-
-    final selected = weightedAgents[_random.nextInt(weightedAgents.length)];
-
-    // Log selection for debugging
-    final agentType =
-        _userAgentPool.firstWhere((a) => a['ua'] == selected)['type'];
-    final attempts = _userAgentAttempts[selected] ?? 0;
-    final successes = _userAgentSuccess[selected] ?? 0;
-    final rate =
-        attempts > 0 ? (successes / attempts * 100).toStringAsFixed(1) : 'New';
-
-    print('\n🎯 SELECTED USER AGENT:');
-    print('   • Type: $agentType');
-    print('   • Success Rate: $rate% ($successes/$attempts)');
-    print(
-      '   • Agent: ${selected.substring(0, math.min(80, selected.length))}...',
-    );
-
-    return selected;
-  }
-
-  /// Record success/failure for user agent optimization
-  static void _recordUserAgentResult(String userAgent, bool success) {
-    _userAgentAttempts[userAgent] = (_userAgentAttempts[userAgent] ?? 0) + 1;
-    if (success) {
-      _userAgentSuccess[userAgent] = (_userAgentSuccess[userAgent] ?? 0) + 1;
-    }
-
-    // Log success rates periodically
-    if (_userAgentAttempts[userAgent]! % 5 == 0) {
-      final attempts = _userAgentAttempts[userAgent]!;
-      final successes = _userAgentSuccess[userAgent] ?? 0;
-      final rate = (successes / attempts * 100).toStringAsFixed(1);
-      print(
-        '📊 User Agent Success Rate: ${userAgent.substring(0, 50)}... = $rate% ($successes/$attempts)',
-      );
-    }
-  }
-
-  /// Initialize session by visiting Instagram homepage to get cookies with persistence
-  static Future<void> _initializeSession() async {
-    // Check if existing session is still valid
-    if (_isSessionValid()) {
-      print(
-        '   • Session already initialized and valid, reusing existing session',
-      );
-      print('   • Session expires: ${_sessionExpiry?.toIso8601String()}');
-      return;
-    }
-
-    print('🔐 INITIALIZING INSTAGRAM SESSION...');
-    print('   • Visiting Instagram homepage to obtain session cookies');
-
+  
+  // Professional user-agent rotation
+  static final List<String> _userAgents = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:109.0) Gecko/20100101 Firefox/121.0',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  ];
+  
+  Future<InstagramPostData> getPostDataOptimized(String postUrl) async {
+    print('\n🚀 DOWNLOADING REEL: $postUrl');
+    
     try {
-      final headers = {
-        'User-Agent': _selectOptimalUserAgent(),
-        'Accept':
-            'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Cache-Control': 'no-cache',
-        'Pragma': 'no-cache',
-      };
+      final videoUrl = await _resolveDirectVideoUrl(postUrl);
+      final shortcode = InstagramUtils.extractShortcodeFromUrl(postUrl);
 
-      print('   • Attempting to connect to Instagram...');
-      final response = await http
-          .get(Uri.parse('https://www.instagram.com/'), headers: headers)
-          .timeout(
-            Duration(seconds: 30),
-            onTimeout: () {
-              throw Exception(
-                'Session initialization timed out after 30 seconds',
-              );
-            },
-          );
-
-      print('   • Instagram response received: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        // Extract session data from cookies
-        final cookies = response.headers['set-cookie'];
-        if (cookies != null) {
-          _extractSessionData(cookies);
-
-          // Set session expiry
-          _sessionExpiry = DateTime.now().add(
-            Duration(hours: _sessionValidityHours),
-          );
-
-          print('✅ Session initialized successfully');
-          print('   • Session ID: ${_sessionId?.substring(0, 8)}...');
-          print('   • CSRF Token: ${_csrfToken?.substring(0, 8)}...');
-          print('   • Valid until: ${_sessionExpiry?.toIso8601String()}');
-
-          // Log session quality
-          final sessionQuality = _assessSessionQuality();
-          print('   • Session quality: $sessionQuality');
-        } else {
-          print('⚠️ No cookies received from Instagram');
-          print(
-            '   • This is unusual but we\'ll continue without session cookies',
-          );
-          _setMinimalSession();
-        }
-      } else if (response.statusCode == 429) {
-        print('🔴 Instagram rate limiting detected (429)');
-        throw Exception(
-          'Instagram is temporarily blocking requests due to rate limiting. '
-          'Please wait 10-15 minutes before trying again.',
-        );
-      } else if (response.statusCode >= 500) {
-        print('🔴 Instagram server error: ${response.statusCode}');
-        throw Exception(
-          'Instagram servers are experiencing issues. Please try again later.',
-        );
-      } else {
-        print('🔴 Failed to initialize session: ${response.statusCode}');
-        print('   • Response: ${response.reasonPhrase}');
-        throw Exception(
-          'Failed to connect to Instagram (HTTP ${response.statusCode}). '
-          'This might be a temporary network issue.',
-        );
-      }
-    } on SocketException catch (e) {
-      print('🔴 Network connection failed: $e');
-      throw Exception(
-        'Cannot connect to Instagram. Please check your internet connection and try again. '
-        'Error: Network unreachable',
-      );
-    } on TimeoutException catch (e) {
-      print('🔴 Connection timeout: $e');
-      throw Exception(
-        'Connection to Instagram timed out. This might indicate a slow or unstable internet connection.',
+      return InstagramPostData(
+        videoUrl: videoUrl.toString(),
+        isVideo: true,
+        shortcode: shortcode,
       );
     } catch (e) {
-      print('🔴 Session initialization error: $e');
-      print('   • Error type: ${e.runtimeType}');
-
-      if (e.toString().contains('No address associated with hostname') ||
-          e.toString().contains('Failed host lookup')) {
-        throw Exception(
-          'DNS lookup failed - cannot resolve Instagram\'s address. '
-          'Please check your internet connection and DNS settings.',
-        );
-      }
-
-      throw Exception('Failed to initialize Instagram session: $e');
+      throw Exception('Failed to download reel: ${e.toString()}');
     }
   }
 
-  /// Check if current session is still valid
-  static bool _isSessionValid() {
-    if (_sessionExpiry == null) return false;
-    if (DateTime.now().isAfter(_sessionExpiry!)) {
-      print('   • Session expired, reinitializing...');
-      _clearSession();
-      return false;
+  Future<InstagramPostData> getStoryData(String storyUrl) async {
+    print('\n🔄 SIMPLE STORY DOWNLOAD: $storyUrl');
+    print('📱 Just like opening a page and pasting URL');
+    
+    try {
+      return await _simpleStoryDownload(storyUrl);
+    } catch (e) {
+      print('❌ Simple story download failed: $e');
+      throw Exception('Failed to download story: ${e.toString()}');
     }
-    return _csrfToken != null; // At minimum we need a CSRF token
   }
-
-  /// Clear expired or invalid session data
-  static void _clearSession() {
-    _sessionId = null;
-    _csrfToken = null;
-    _mid = null;
-    _ig_did = null;
-    _ig_nrcb = null;
-    _sessionExpiry = null;
-  }
-
-  /// Set minimal session for cases where cookies aren't received
-  static void _setMinimalSession() {
-    _csrfToken = 'fallback_${DateTime.now().millisecondsSinceEpoch}';
-    _sessionExpiry = DateTime.now().add(
-      Duration(hours: 1),
-    ); // Shorter expiry for fallback
-  }
-
-  /// Assess the quality of the current session
-  static String _assessSessionQuality() {
-    int score = 0;
-    if (_sessionId != null) score += 2;
-    if (_csrfToken != null) score += 2;
-    if (_mid != null) score += 1;
-    if (_ig_did != null) score += 1;
-    if (_ig_nrcb != null) score += 1;
-
-    if (score >= 6) return 'Excellent';
-    if (score >= 4) return 'Good';
-    if (score >= 2) return 'Fair';
-    return 'Poor';
-  }
-
-  /// Extract session data from Instagram cookies with enhanced parsing
-  static void _extractSessionData(String cookies) {
-    final cookieList = cookies.split(',');
-    final parsedCookies = <String, String>{};
-
-    for (final cookie in cookieList) {
-      final parts = cookie.trim().split(';')[0].split('=');
-      if (parts.length == 2) {
-        final name = parts[0].trim();
-        final value = parts[1].trim();
-        parsedCookies[name] = value;
+  
+  Future<InstagramPostData> _simpleStoryDownload(String storyUrl) async {
+    // Just try the working services one by one
+    final services = [
+      'https://www.storysaver.net/download-instagram-videos/',
+      'https://igram.world/story-saver',
+      'https://snapinsta.app/instagram-story-downloader',
+    ];
+    
+    for (final serviceUrl in services) {
+      try {
+        print('🎯 Trying: $serviceUrl');
+        
+        // Use the detailed method for each service
+        final result = await _tryServiceDownload(serviceUrl, storyUrl);
+        if (result != null) {
+          print('✅ Found download link!');
+          return result;
+        }
+      } catch (e) {
+        print('⚠️ $serviceUrl failed: $e');
+        continue;
       }
     }
-
-    // Extract known Instagram cookies
-    _sessionId = parsedCookies['sessionid'];
-    _csrfToken = parsedCookies['csrftoken'];
-    _mid = parsedCookies['mid'];
-    _ig_did = parsedCookies['ig_did'];
-    _ig_nrcb = parsedCookies['ig_nrcb'];
-
-    // Log what we extracted
-    print('   • Extracted cookies: ${parsedCookies.keys.toList()}');
-
-    // If we didn't get a CSRF token, generate a fallback
-    if (_csrfToken == null || _csrfToken!.isEmpty) {
-      _csrfToken = 'generated_${DateTime.now().millisecondsSinceEpoch}';
-      print('   • Generated fallback CSRF token');
-    }
+    
+    throw Exception('All services failed');
   }
-
-  /// Get authenticated headers for Instagram requests with enhanced session management
-  static Map<String, String> _getAuthenticatedHeaders(String userAgent) {
-    final headers = <String, String>{
-      'User-Agent': userAgent,
-      'Accept':
-          'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+  
+  String? _findDownloadLink(String html) {
+    // Look for obvious download links
+    final patterns = [
+      RegExp(r'(https://[^"\s]*(?:instagram|fbcdn)[^"\s]*\.(?:mp4|jpg)[^"\s]*)'),
+      RegExp(r'href=["\x27](https://[^"\x27]*\.(?:mp4|jpg))["\x27]'),
+      RegExp(r'"download_url"\s*:\s*"(https://[^"]*\.(?:mp4|jpg))"'),
+    ];
+    
+    for (final pattern in patterns) {
+      final match = pattern.firstMatch(html);
+      if (match != null) {
+        final url = match.group(1)!;
+        if (url.length > 50 && !url.contains('favicon')) {
+          return url;
+        }
+      }
+    }
+    return null;
+  }
+  
+  /// Simple and direct story download - just like a human would do it
+  Future<InstagramPostData> _downloadStoryAdvancedBackground(String storyUrl) async {
+    print('🚀 Simple story download approach...');
+    
+    // Just try the services that work, in order
+    final services = [
+      'https://www.storysaver.net/download-instagram-videos/',
+      'https://igram.world/story-saver',
+      'https://snapinsta.app/instagram-story-downloader',
+    ];
+    
+    for (final serviceUrl in services) {
+      try {
+        print('🎯 Trying service: $serviceUrl');
+        final result = await _tryServiceDownload(serviceUrl, storyUrl);
+        if (result != null) {
+          print('✅ Success with $serviceUrl');
+          return result;
+        }
+      } catch (e) {
+        print('⚠️ Failed $serviceUrl: $e');
+        continue;
+      }
+    }
+    
+    throw Exception('All simple story services failed');
+  }
+  
+  /// Simple story download - load page, submit form, get download link
+  Future<InstagramPostData?> _tryServiceDownload(String serviceUrl, String storyUrl) async {
+    print('📱 Simple download from: $serviceUrl');
+    
+    // Step 1: Load the page
+    final headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'en-US,en;q=0.9',
-      'Accept-Encoding': 'gzip, deflate',
+    };
+    
+    final pageResponse = await http.get(Uri.parse(serviceUrl), headers: headers)
+        .timeout(Duration(seconds: 20));
+    
+    if (pageResponse.statusCode != 200) {
+      throw Exception('Failed to load page: ${pageResponse.statusCode}');
+    }
+    
+    final pageHtml = _safeDecodeResponse(pageResponse);
+    print('✅ Page loaded (${pageHtml.length} chars)');
+    
+    // Step 2: Submit the form (POST to same page or action URL)
+    final formData = {'url': storyUrl, 'instagram_url': storyUrl};
+    
+    try {
+      // Try POST to same page first
+      final postResponse = await http.post(
+        Uri.parse(serviceUrl),
+        headers: {
+          ...headers,
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Referer': serviceUrl,
+        },
+        body: formData.entries
+            .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+            .join('&'),
+      ).timeout(Duration(seconds: 25));
+      
+      if (postResponse.statusCode == 200) {
+        final responseHtml = _safeDecodeResponse(postResponse);
+        print('✅ Form submitted (${responseHtml.length} chars)');
+        
+        // Step 3: Extract download link from response
+        final mediaUrl = _extractSimpleMediaUrl(responseHtml);
+        if (mediaUrl != null) {
+          return InstagramPostData(
+            videoUrl: mediaUrl,
+            displayUrl: null,
+            isVideo: mediaUrl.contains('.mp4'),
+          );
+        }
+      }
+    } catch (e) {
+      print('⚠️ POST failed: $e');
+    }
+    
+    // Step 4: Try GET with parameters as fallback
+    try {
+      final getUrl = '$serviceUrl?url=${Uri.encodeComponent(storyUrl)}';
+      final getResponse = await http.get(Uri.parse(getUrl), headers: headers)
+          .timeout(Duration(seconds: 20));
+      
+      if (getResponse.statusCode == 200) {
+        final responseHtml = _safeDecodeResponse(getResponse);
+        print('✅ GET request done (${responseHtml.length} chars)');
+        
+        final mediaUrl = _extractSimpleMediaUrl(responseHtml);
+        if (mediaUrl != null) {
+          return InstagramPostData(
+            videoUrl: mediaUrl,
+            displayUrl: null,
+            isVideo: mediaUrl.contains('.mp4'),
+          );
+        }
+      }
+    } catch (e) {
+      print('⚠️ GET failed: $e');
+    }
+    
+    return null;
+  }
+  
+  /// Simple media URL extraction - look for obvious download links
+  String? _extractSimpleMediaUrl(String html) {
+    // Look for direct Instagram CDN URLs first
+    final patterns = [
+      // Instagram CDN URLs
+      RegExp(r'(https://[^"\s]*(?:instagram|fbcdn|cdninstagram)[^"\s]*\.(?:mp4|jpg|jpeg|png)[^"\s]*)'),
+      // Download URLs in href attributes  
+      RegExp(r'href=["\x27](https://[^"\x27]*\.(?:mp4|jpg|jpeg|png)[^"\x27]*)["\x27]'),
+      // URLs in JavaScript variables
+      RegExp(r'(?:downloadUrl|mediaUrl|videoUrl)\s*[:=]\s*["\x27](https://[^"\x27]*\.(?:mp4|jpg|jpeg|png)[^"\x27]*)["\x27]'),
+      // JSON download_url fields
+      RegExp(r'"download_url"\s*:\s*"(https://[^"]*\.(?:mp4|jpg|jpeg|png)[^"]*)"'),
+    ];
+    
+    for (final pattern in patterns) {
+      final matches = pattern.allMatches(html);
+      for (final match in matches) {
+        final url = match.group(1)!;
+        
+        // Simple validation - exclude obvious non-media URLs
+        if (url.length > 50 && 
+            !url.toLowerCase().contains('favicon') && 
+            !url.toLowerCase().contains('icon') &&
+            !url.toLowerCase().contains('logo')) {
+          print('✅ Found media URL: ${url.substring(0, math.min(80, url.length))}...');
+          return url;
+        }
+      }
+    }
+    
+    print('⚠️ No media URL found in HTML');
+    return null;
+  }
+  
+  /// Process individual service with advanced automation
+  Future<InstagramPostData?> _processServiceAdvanced(Map<String, dynamic> service, String storyUrl) async {
+    final serviceName = service['name'] as String;
+    final baseUrl = service['baseUrl'] as String;
+    final endpoint = service['endpoint'] as String;
+    final method = service['method'] as String;
+    final fullUrl = '$baseUrl$endpoint';
+    
+    switch (method) {
+      case 'advanced_form':
+        return await _advancedFormSubmission(fullUrl, storyUrl, serviceName);
+      case 'form_submit':
+        return await _intelligentFormSubmission(fullUrl, storyUrl, serviceName);
+      case 'advanced_automation':
+        return await _advancedBrowserAutomation(fullUrl, storyUrl, serviceName);
+      case 'api_simulation':
+        return await _apiSimulationApproach(fullUrl, storyUrl, serviceName);
+      default:
+        return await _genericBackgroundApproach(fullUrl, storyUrl, serviceName);
+    }
+  }
+  
+  /// Advanced form submission with sophisticated session handling
+  Future<InstagramPostData?> _advancedFormSubmission(String url, String storyUrl, String serviceName) async {
+    print('📝 $serviceName: Advanced form submission');
+    
+    try {
+      // Step 1: Initial page load with realistic browser simulation
+      final sessionHeaders = _createAdvancedBrowserHeaders(url);
+      
+      final pageResponse = await http.get(
+        Uri.parse(url),
+        headers: sessionHeaders,
+      ).timeout(Duration(seconds: 25));
+      
+      if (pageResponse.statusCode != 200) {
+        throw Exception('Failed to load $serviceName page: ${pageResponse.statusCode}');
+      }
+      
+      final pageHtml = _safeDecodeResponse(pageResponse);
+      print('✅ $serviceName page loaded (${pageHtml.length} chars)');
+      
+      // Step 2: Advanced form analysis and token extraction
+      final formContext = _analyzeFormAdvanced(pageHtml);
+      
+      // Step 3: Simulate realistic user interaction timing
+      await Future.delayed(Duration(milliseconds: 1500 + _random.nextInt(2000)));
+      
+      // Step 4: Multiple submission strategies
+      final submissionStrategies = [
+        () => _tryAjaxSubmission(url, storyUrl, formContext, sessionHeaders),
+        () => _tryPostSubmission(url, storyUrl, formContext, sessionHeaders),
+        () => _tryGetSubmission(url, storyUrl, formContext, sessionHeaders),
+        () => _tryApiEndpointSubmission(url, storyUrl, formContext, sessionHeaders),
+      ];
+      
+      for (final strategy in submissionStrategies) {
+        try {
+          final result = await strategy();
+          if (result != null) return result;
+        } catch (e) {
+          print('⚠️ Strategy failed: $e');
+          continue;
+        }
+      }
+      
+    } catch (e) {
+      print('❌ $serviceName advanced form submission failed: $e');
+    }
+    
+    return null;
+  }
+  
+  /// Intelligent form submission with behavior mimicking
+  Future<InstagramPostData?> _intelligentFormSubmission(String url, String storyUrl, String serviceName) async {
+    print('🤖 $serviceName: Intelligent form submission');
+    
+    try {
+      final headers = _createIntelligentHeaders(url);
+      
+      // Load page and extract form information
+      final pageResponse = await http.get(Uri.parse(url), headers: headers);
+      if (pageResponse.statusCode != 200) return null;
+      
+      final pageHtml = _safeDecodeResponse(pageResponse);
+      final formData = _extractFormDataIntelligent(pageHtml);
+      
+      // Add the Instagram URL
+      formData['url'] = storyUrl;
+      formData['instagram_url'] = storyUrl;
+      formData['link'] = storyUrl;
+      
+      // Simulate realistic form filling delay
+      await Future.delayed(Duration(milliseconds: 800 + _random.nextInt(1200)));
+      
+      // Try different submission approaches
+      final endpoints = _discoverSubmissionEndpoints(url, pageHtml);
+      
+      for (final endpoint in endpoints) {
+        try {
+          final result = await _submitFormIntelligently(endpoint, formData, headers);
+          if (result != null) return result;
+        } catch (e) {
+          continue;
+        }
+      }
+      
+    } catch (e) {
+      print('❌ $serviceName intelligent submission failed: $e');
+    }
+    
+    return null;
+  }
+  
+  Future<InstagramPostData> _downloadStoryDirect(String storyUrl) async {
+    print('📝 Trying direct API approach...');
+    
+    // Try multiple API endpoints with different approaches
+    final apiEndpoints = [
+      {
+        'url': 'https://api.savetoinsta.com/api/story',
+        'method': 'POST',
+        'headers': {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+        'body': {'url': storyUrl}
+      },
+      {
+        'url': 'https://savetoinsta.com/api/story',
+        'method': 'POST',
+        'headers': {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+        'body': {'url': storyUrl}
+      },
+      {
+        'url': 'https://api-wh.igram.world/api/v1/instagram/story',
+        'method': 'POST',
+        'headers': {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+          'Origin': 'https://igram.world',
+          'Referer': 'https://igram.world/',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        },
+        'body': {'url': storyUrl}
+      }
+    ];
+    
+    for (final endpoint in apiEndpoints) {
+      try {
+        print('📝 Trying API: ${endpoint['url']}');
+        
+        final response = await http.post(
+          Uri.parse(endpoint['url'] as String),
+          headers: endpoint['headers'] as Map<String, String>,
+          body: json.encode(endpoint['body']),
+        ).timeout(Duration(seconds: 30));
+        
+        print('📊 API Response Status: ${response.statusCode}');
+        
+        if (response.statusCode == 200) {
+          return _parseStoryApiResponse(response.body, storyUrl);
+        } else {
+          print('❌ API failed with status: ${response.statusCode}');
+        }
+        
+      } catch (e) {
+        print('❌ API ${endpoint['url']} failed: $e');
+        continue;
+      }
+    }
+    
+    throw Exception('All direct API endpoints failed');
+  }
+  
+  Future<InstagramPostData> _downloadStoryWebScraping(String storyUrl) async {
+    print('📝 Professional multi-service approach...');
+
+    // Professional multi-service architecture with fallback
+    final services = [
+      {
+        'name': 'igram.world',
+        'pageUrl': 'https://igram.world/story-saver',
+        'priority': 1,
+        'type': 'form_automation'
+      },
+      {
+        'name': 'snapinsta.app',
+        'pageUrl': 'https://snapinsta.app/instagram-story-downloader',
+        'priority': 2,
+        'type': 'generic_service'
+      },
+      {
+        'name': 'savestory.online',
+        'pageUrl': 'https://savestory.online',
+        'priority': 3,
+        'type': 'generic_service'
+      },
+      {
+        'name': 'storysaver.app',
+        'pageUrl': 'https://storysaver.app',
+        'priority': 4,
+        'type': 'generic_service'
+      }
+    ];
+    
+    // Try services in priority order with professional headers
+    for (final service in services) {
+      try {
+        print('🎯 Trying ${service['name']} (Priority: ${service['priority']})');
+        
+        final headers = _createAdvancedBrowserHeaders(service['pageUrl'] as String);
+        
+        if (service['type'] == 'form_automation') {
+          final result = await _tryIgramWorldApproach(service, '', storyUrl);
+          if (result != null) return result;
+        } else {
+          final result = await _genericBackgroundApproach('${service['baseUrl']}${service['endpoint']}', storyUrl, service['name'] as String);
+          if (result != null) return result;
+        }
+        
+        // Professional delay between services
+        await Future.delayed(Duration(milliseconds: 800));
+        
+      } catch (e) {
+        print('❌ Service ${service['name']} failed: $e');
+        continue;
+      }
+    }
+    
+    throw Exception('All professional story download services failed');
+  }
+  
+  /// Advanced browser automation with session persistence
+  Future<InstagramPostData?> _advancedBrowserAutomation(String url, String storyUrl, String serviceName) async {
+    print('🌐 $serviceName: Advanced browser automation');
+    
+    try {
+      // Create persistent session with cookies
+      final sessionHeaders = _createPersistentSessionHeaders(url);
+      
+      // Multi-step automation process
+      final automationSteps = [
+        () => _loadPageWithSession(url, sessionHeaders),
+        (pageHtml) => _extractAndProcessFormElements(pageHtml, storyUrl),
+        (formData) => _simulateUserInteraction(url, formData, sessionHeaders),
+        (responseData) => _extractMediaUrlsAdvanced(responseData),
+      ];
+      
+      dynamic stepResult;
+      for (final step in automationSteps) {
+        stepResult = await step(stepResult);
+        if (stepResult == null) break;
+      }
+      
+      if (stepResult is InstagramPostData) {
+        return stepResult;
+      }
+      
+    } catch (e) {
+      print('❌ $serviceName automation failed: $e');
+    }
+    
+    return null;
+  }
+  
+  /// API simulation approach
+  Future<InstagramPostData?> _apiSimulationApproach(String url, String storyUrl, String serviceName) async {
+    print('🚀 $serviceName: API simulation approach');
+    
+    try {
+      final baseUrl = Uri.parse(url).origin;
+      
+      // Try common API endpoints
+      final apiEndpoints = [
+        '$baseUrl/api/download',
+        '$baseUrl/api/instagram/story',
+        '$baseUrl/api/v1/story',
+        '$baseUrl/download',
+        '$baseUrl/process',
+      ];
+      
+      for (final endpoint in apiEndpoints) {
+        try {
+          final result = await _tryApiEndpoint(endpoint, storyUrl);
+          if (result != null) return result;
+        } catch (e) {
+          continue;
+        }
+      }
+      
+    } catch (e) {
+      print('❌ $serviceName API simulation failed: $e');
+    }
+    
+    return null;
+  }
+  
+  /// Generic background approach for fallback
+  Future<InstagramPostData?> _genericBackgroundApproach(String url, String storyUrl, String serviceName) async {
+    print('🚀 $serviceName: Generic background approach');
+    
+    try {
+      final headers = _createAdvancedBrowserHeaders(url);
+      
+      // Simple form submission
+      final formData = {'url': storyUrl, 'instagram_url': storyUrl};
+      final body = formData.entries
+          .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+          .join('&');
+      
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          ...headers,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: body,
+      ).timeout(Duration(seconds: 20));
+      
+      if (response.statusCode == 200) {
+        final responseHtml = _safeDecodeResponse(response);
+        return _extractMediaFromResponse(responseHtml, storyUrl);
+      }
+      
+    } catch (e) {
+      print('❌ $serviceName generic approach failed: $e');
+    }
+    
+    return null;
+  }
+  
+  // Supporting helper methods
+  
+  Map<String, String> _createAdvancedBrowserHeaders(String refererUrl) {
+    final userAgent = _userAgents[_random.nextInt(_userAgents.length)];
+    
+    return {
+      'User-Agent': userAgent,
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+      'Accept-Language': 'en-US,en;q=0.9,es;q=0.8,fr;q=0.7,de;q=0.6',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'DNT': '1',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+      'Cache-Control': 'max-age=0',
+      'Referer': refererUrl,
+      'sec-ch-ua': '"Chromium";v="120", "Google Chrome";v="120", "Not A(Brand";v="8"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"macOS"',
+    };
+  }
+  
+  Map<String, String> _createIntelligentHeaders(String refererUrl) {
+    return {
+      'User-Agent': _userAgents[_random.nextInt(_userAgents.length)],
+      'Accept': 'application/json, text/javascript, */*; q=0.01',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'Origin': Uri.parse(refererUrl).origin,
+      'Referer': refererUrl,
+      'X-Requested-With': 'XMLHttpRequest',
+      'DNT': '1',
+      'Connection': 'keep-alive',
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Site': 'same-origin',
+    };
+  }
+  
+  Map<String, String> _createPersistentSessionHeaders(String refererUrl) {
+    final sessionId = 'sess_${DateTime.now().millisecondsSinceEpoch}_${_random.nextInt(9999)}';
+    
+    return {
+      'User-Agent': _userAgents[_random.nextInt(_userAgents.length)],
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': refererUrl,
+      'Connection': 'keep-alive',
+      'Cookie': 'session_id=$sessionId; _ga=GA1.1.${_random.nextInt(999999999)}.${DateTime.now().millisecondsSinceEpoch ~/ 1000}',
+    };
+  }
+  
+  String _safeDecodeResponse(http.Response response) {
+    try {
+      return response.body;
+    } catch (e) {
+      return String.fromCharCodes(response.bodyBytes);
+    }
+  }
+  
+  Map<String, String> _analyzeFormAdvanced(String html) {
+    final formData = <String, String>{};
+    
+    // Extract CSRF tokens with multiple patterns
+    final csrfPatterns = [
+      RegExp(r'<meta[^>]*name=["\x27]csrf-token["\x27][^>]*content=["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'<input[^>]*name=["\x27]_token["\x27][^>]*value=["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'window\._token\s*=\s*["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'csrf_token["\x27]?\s*[:=]\s*["\x27]([^"\x27]+)["\x27]'),
+    ];
+    
+    for (final pattern in csrfPatterns) {
+      final match = pattern.firstMatch(html);
+      if (match != null) {
+        formData['_token'] = match.group(1)!;
+        formData['csrf_token'] = match.group(1)!;
+        break;
+      }
+    }
+    
+    // Extract all hidden fields
+    final hiddenPattern = RegExp(r'<input[^>]*type=["\x27]hidden["\x27][^>]*name=["\x27]([^"\x27]+)["\x27][^>]*value=["\x27]([^"\x27]*)["\x27]');
+    final hiddenMatches = hiddenPattern.allMatches(html);
+    for (final match in hiddenMatches) {
+      formData[match.group(1)!] = match.group(2) ?? '';
+    }
+    
+    return formData;
+  }
+  
+  Map<String, String> _extractFormDataIntelligent(String html) {
+    final formData = _analyzeFormAdvanced(html);
+    
+    // Look for additional JavaScript-defined variables
+    final jsVarPatterns = [
+      RegExp(r'window\.formData\s*=\s*\{([^}]+)\}'),
+      RegExp(r'var\s+formConfig\s*=\s*\{([^}]+)\}'),
+    ];
+    
+    for (final pattern in jsVarPatterns) {
+      final match = pattern.firstMatch(html);
+      if (match != null) {
+        // Simple key-value extraction from JS object
+        final jsContent = match.group(1)!;
+        final kvPattern = RegExp(r'["\x27]([^"\x27]+)["\x27]\s*:\s*["\x27]([^"\x27]+)["\x27]');
+        final kvMatches = kvPattern.allMatches(jsContent);
+        for (final kvMatch in kvMatches) {
+          formData[kvMatch.group(1)!] = kvMatch.group(2)!;
+        }
+      }
+    }
+    
+    return formData;
+  }
+  
+  List<String> _discoverSubmissionEndpoints(String baseUrl, String html) {
+    final endpoints = <String>{};
+    
+    // Extract form action URLs
+    final formActionPattern = RegExp(r'<form[^>]*action=["\x27]([^"\x27]+)["\x27]');
+    final actionMatches = formActionPattern.allMatches(html);
+    for (final match in actionMatches) {
+      var action = match.group(1)!;
+      if (action.startsWith('/')) {
+        action = '${Uri.parse(baseUrl).origin}$action';
+      }
+      endpoints.add(action);
+    }
+    
+    // Extract AJAX endpoints from JavaScript
+    final ajaxPatterns = [
+      RegExp(r'url\s*:\s*["\x27]([^"\x27]+/(?:process|download|submit|api)[^"\x27]*)["\x27]'),
+      RegExp(r'\$\.post\(["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'fetch\(["\x27]([^"\x27]+)["\x27]'),
+    ];
+    
+    for (final pattern in ajaxPatterns) {
+      final matches = pattern.allMatches(html);
+      for (final match in matches) {
+        var endpoint = match.group(1)!;
+        if (endpoint.startsWith('/')) {
+          endpoint = '${Uri.parse(baseUrl).origin}$endpoint';
+        }
+        endpoints.add(endpoint);
+      }
+    }
+    
+    // Add common fallback endpoints
+    final baseUri = Uri.parse(baseUrl);
+    endpoints.addAll([
+      '${baseUri.origin}/download',
+      '${baseUri.origin}/process',
+      '${baseUri.origin}/api/download',
+      baseUrl, // POST to same page
+    ]);
+    
+    return endpoints.toList();
+  }
+  
+  Future<InstagramPostData?> _submitFormIntelligently(String endpoint, Map<String, String> formData, Map<String, String> headers) async {
+    try {
+      final formBody = formData.entries
+          .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+          .join('&');
+      
+      final response = await http.post(
+        Uri.parse(endpoint),
+        headers: {
+          ...headers,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formBody,
+      ).timeout(Duration(seconds: 25));
+      
+      if (response.statusCode == 200) {
+        final responseData = _safeDecodeResponse(response);
+        return _extractMediaFromResponse(responseData, formData['url'] ?? '');
+      }
+      
+    } catch (e) {
+      // Silent fail for this endpoint
+    }
+    
+    return null;
+  }
+  
+  Future<InstagramPostData?> _tryAjaxSubmission(String baseUrl, String storyUrl, Map<String, String> formData, Map<String, String> sessionHeaders) async {
+    final ajaxHeaders = {
+      ...sessionHeaders,
+      'Accept': 'application/json, text/javascript, */*; q=0.01',
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'X-Requested-With': 'XMLHttpRequest',
+    };
+    
+    final ajaxData = {
+      ...formData,
+      'url': storyUrl,
+      'instagram_url': storyUrl,
+      'action': 'download',
+    };
+    
+    final endpoints = [
+      '${Uri.parse(baseUrl).origin}/ajax/download',
+      '${Uri.parse(baseUrl).origin}/api/download',
+      '$baseUrl/download',
+    ];
+    
+    for (final endpoint in endpoints) {
+      try {
+        final response = await http.post(
+          Uri.parse(endpoint),
+          headers: ajaxHeaders,
+          body: ajaxData.entries
+              .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+              .join('&'),
+        ).timeout(Duration(seconds: 20));
+        
+        if (response.statusCode == 200) {
+          final responseData = _safeDecodeResponse(response);
+          
+          // Try parsing as JSON first
+          try {
+            final jsonData = json.decode(responseData);
+            if (jsonData is Map) {
+              final mediaUrl = jsonData['download_url'] ?? 
+                             jsonData['video_url'] ?? 
+                             jsonData['media_url'] ?? 
+                             jsonData['url'];
+              
+              if (mediaUrl != null && _isValidMediaUrl(mediaUrl.toString())) {
+                return InstagramPostData(
+                  videoUrl: mediaUrl.toString(),
+                  displayUrl: jsonData['thumbnail'] ?? jsonData['thumb'],
+                  isVideo: !mediaUrl.toString().contains('.jpg') && !mediaUrl.toString().contains('.png'),
+                );
+              }
+            }
+          } catch (e) {
+            // Not JSON, try HTML parsing
+            final result = _extractMediaFromResponse(responseData, storyUrl);
+            if (result != null) return result;
+          }
+        }
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    return null;
+  }
+  
+  Future<InstagramPostData?> _tryPostSubmission(String baseUrl, String storyUrl, Map<String, String> formData, Map<String, String> sessionHeaders) async {
+    try {
+      final postData = {
+        ...formData,
+        'url': storyUrl,
+        'instagram_url': storyUrl,
+      };
+      
+      final response = await http.post(
+        Uri.parse(baseUrl),
+        headers: {
+          ...sessionHeaders,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: postData.entries
+            .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+            .join('&'),
+      ).timeout(Duration(seconds: 25));
+      
+      if (response.statusCode == 200) {
+        final responseData = _safeDecodeResponse(response);
+        return _extractMediaFromResponse(responseData, storyUrl);
+      }
+      
+    } catch (e) {
+      // Silent fail
+    }
+    
+    return null;
+  }
+  
+  Future<InstagramPostData?> _tryGetSubmission(String baseUrl, String storyUrl, Map<String, String> formData, Map<String, String> sessionHeaders) async {
+    try {
+      final queryParams = {
+        ...formData,
+        'url': storyUrl,
+        'instagram_url': storyUrl,
+      };
+      
+      final queryString = queryParams.entries
+          .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+          .join('&');
+      
+      final getUrl = '$baseUrl?$queryString';
+      
+      final response = await http.get(
+        Uri.parse(getUrl),
+        headers: sessionHeaders,
+      ).timeout(Duration(seconds: 25));
+      
+      if (response.statusCode == 200) {
+        final responseData = _safeDecodeResponse(response);
+        return _extractMediaFromResponse(responseData, storyUrl);
+      }
+      
+    } catch (e) {
+      // Silent fail
+    }
+    
+    return null;
+  }
+  
+  Future<InstagramPostData?> _tryApiEndpointSubmission(String baseUrl, String storyUrl, Map<String, String> formData, Map<String, String> sessionHeaders) async {
+    final apiEndpoints = [
+      '${Uri.parse(baseUrl).origin}/api/v1/instagram/story',
+      '${Uri.parse(baseUrl).origin}/api/instagram/download',
+      '${Uri.parse(baseUrl).origin}/api/download',
+    ];
+    
+    for (final endpoint in apiEndpoints) {
+      try {
+        final result = await _tryApiEndpoint(endpoint, storyUrl);
+        if (result != null) return result;
+      } catch (e) {
+        continue;
+      }
+    }
+    
+    return null;
+  }
+  
+  Future<InstagramPostData?> _tryApiEndpoint(String endpoint, String storyUrl) async {
+    try {
+      final apiHeaders = {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'User-Agent': _userAgents[_random.nextInt(_userAgents.length)],
+      };
+      
+      final response = await http.post(
+        Uri.parse(endpoint),
+        headers: apiHeaders,
+        body: json.encode({'url': storyUrl}),
+      ).timeout(Duration(seconds: 20));
+      
+      if (response.statusCode == 200) {
+        final jsonData = json.decode(response.body);
+        if (jsonData is Map) {
+          final mediaUrl = jsonData['download_url'] ?? 
+                         jsonData['video_url'] ?? 
+                         jsonData['media_url'] ?? 
+                         jsonData['url'];
+          
+          if (mediaUrl != null && _isValidMediaUrl(mediaUrl.toString())) {
+            return InstagramPostData(
+              videoUrl: mediaUrl.toString(),
+              displayUrl: jsonData['thumbnail'] ?? jsonData['thumb'],
+              isVideo: !mediaUrl.toString().contains('.jpg') && !mediaUrl.toString().contains('.png'),
+            );
+          }
+        }
+      }
+      
+    } catch (e) {
+      // Silent fail
+    }
+    
+    return null;
+  }
+  Future<InstagramPostData?> _tryIgramWorldApproach(Map<String, dynamic> service, String pageHtml, String storyUrl) async {
+    final serviceName = service['name'] as String;
+    final pageUrl = service['pageUrl'] as String;
+    final baseUrl = Uri.parse(pageUrl).origin;
+    
+    print('🔧 Analyzing igram.world approach...');
+    
+    // Strategy 1: Simple GET approach (most reliable)
+    print('📋 Strategy 1: Simple GET requests');
+    try {
+      final result = await _trySimpleGetApproach(baseUrl, storyUrl);
+      if (result != null) return result;
+    } catch (e) {
+      print('ℹ️ Simple GET approach failed: $e');
+    }
+    
+    // Strategy 2: Browser simulation with form interaction
+    print('📋 Strategy 2: Browser simulation with form interaction');
+    try {
+      final result = await _simulateBrowserInteraction(baseUrl, storyUrl);
+      if (result != null) return result;
+    } catch (e) {
+      print('ℹ️ Browser simulation failed: $e');
+    }
+    
+    // Strategy 3: Hidden API endpoints discovery
+    print('📋 Strategy 3: Hidden API endpoints');
+    try {
+      final result = await _tryHiddenApiEndpoints(baseUrl, storyUrl);
+      if (result != null) return result;
+    } catch (e) {
+      print('ℹ️ Hidden API endpoints failed: $e');
+    }
+    
+    // Strategy 4: Dynamic form submission simulation
+    print('📋 Strategy 4: Dynamic form submission');
+    try {
+      final result = await _simulateFormSubmission(baseUrl, pageHtml, storyUrl);
+      if (result != null) return result;
+    } catch (e) {
+      print('ℹ️ Dynamic form submission failed: $e');
+    }
+    
+    print('❌ All igram.world strategies failed');
+    return null;
+  }
+  
+  Future<InstagramPostData?> _trySimpleGetApproach(String baseUrl, String storyUrl) async {
+    print('🌍 Trying simple GET approach...');
+    
+    // First, let's load the page to understand the form structure
+    print('📋 Step 1: Loading igram.world story-saver page to analyze form...');
+    
+    final pageHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'DNT': '1',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+    };
+    
+    try {
+      final pageResponse = await http.get(
+        Uri.parse('$baseUrl/story-saver'),
+        headers: pageHeaders,
+      ).timeout(Duration(seconds: 30));
+      
+      if (pageResponse.statusCode == 200) {
+        String pageHtml;
+        try {
+          pageHtml = pageResponse.body;
+        } catch (e) {
+          pageHtml = String.fromCharCodes(pageResponse.bodyBytes);
+        }
+        
+        print('✅ Page loaded (${pageHtml.length} chars)');
+        
+        // Step 2: Analyze the form and simulate user interaction
+        final formResult = await _simulateIgramFormSubmission(baseUrl, pageHtml, storyUrl);
+        if (formResult != null) return formResult;
+      }
+    } catch (e) {
+      print('⚠️ Failed to load page: $e');
+    }
+    
+    // Fallback to direct endpoint attempts
+    print('📋 Step 2: Trying direct endpoints as fallback...');
+    
+    final getEndpoints = [
+      '$baseUrl/story-saver?url=${Uri.encodeComponent(storyUrl)}',
+      '$baseUrl/download?url=${Uri.encodeComponent(storyUrl)}',
+      '$baseUrl/api/download?url=${Uri.encodeComponent(storyUrl)}',
+      '$baseUrl/process?url=${Uri.encodeComponent(storyUrl)}',
+      '$baseUrl/api/story?url=${Uri.encodeComponent(storyUrl)}',
+    ];
+    
+    final headers = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'application/json, text/html, */*',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Referer': '$baseUrl/story-saver',
+      'DNT': '1',
+      'Connection': 'keep-alive',
+    };
+    
+    for (final endpoint in getEndpoints) {
+      try {
+        print('📋 Trying GET: $endpoint');
+        
+        final response = await http.get(
+          Uri.parse(endpoint),
+          headers: headers,
+        ).timeout(Duration(seconds: 30));
+        
+        print('📊 Response status: ${response.statusCode}');
+        
+        if (response.statusCode == 200) {
+          String responseBody;
+          try {
+            responseBody = response.body;
+          } catch (e) {
+            responseBody = String.fromCharCodes(response.bodyBytes);
+          }
+          
+          print('📊 Response length: ${responseBody.length} chars');
+          
+          if (responseBody.length < 100) {
+            print('⚠️ Response too small, skipping');
+            continue;
+          }
+          
+          // Try parsing the response
+          try {
+            final jsonData = json.decode(responseBody);
+            if (jsonData is Map) {
+              final mediaUrl = jsonData['download_url'] ?? 
+                             jsonData['video_url'] ?? 
+                             jsonData['media_url'] ?? 
+                             jsonData['url'];
+              
+              if (mediaUrl != null && mediaUrl.toString().isNotEmpty) {
+                print('✅ Found media URL in JSON: ${mediaUrl.toString().substring(0, math.min(100, mediaUrl.toString().length))}...');
+                
+                return InstagramPostData(
+                  videoUrl: mediaUrl.toString(),
+                  displayUrl: jsonData['thumbnail'] ?? jsonData['thumb'],
+                  isVideo: !mediaUrl.toString().contains('.jpg') && !mediaUrl.toString().contains('.png'),
+                );
+              }
+            }
+          } catch (e) {
+            // Try HTML parsing
+            try {
+              final result = _parseJavaScriptResponse(responseBody);
+              if (result != null) return result;
+              
+              final result2 = _parseStoryFromHtml(responseBody, storyUrl);
+              if (result2 != null) return result2;
+              
+            } catch (e2) {
+              print('⚠️ Failed to parse response: $e2');
+            }
+          }
+        }
+        
+        await Future.delayed(Duration(milliseconds: 800));
+        
+      } catch (e) {
+        print('⚠️ GET request failed: $e');
+        continue;
+      }
+    }
+    
+    return null;
+  }
+  
+  Future<InstagramPostData?> _simulateIgramFormSubmission(String baseUrl, String pageHtml, String storyUrl) async {
+    print('🤖 Simulating igram.world form submission like a real browser...');
+    
+    // Step 1: Extract form data (CSRF tokens, hidden fields, etc.)
+    final formData = _extractIgramFormData(pageHtml);
+    print('📋 Extracted ${formData.length} form fields');
+    
+    // Step 2: Add the story URL (simulating user pasting the link)
+    formData['url'] = storyUrl;
+    
+    // Step 3: Simulate the "Download" button click
+    // First, wait a realistic time (simulating user interaction)
+    await Future.delayed(Duration(milliseconds: 2000));
+    
+    // Find the actual form action URL
+    final formAction = _extractFormAction(pageHtml) ?? '/story-saver';
+    final submitUrl = formAction.startsWith('http') ? formAction : '$baseUrl$formAction';
+    
+    print('📋 Submitting form to: $submitUrl');
+    
+    // Headers that mimic a real browser form submission
+    final submitHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Content-Type': 'application/x-www-form-urlencoded',
+      'Origin': baseUrl,
+      'Referer': '$baseUrl/story-saver',
       'DNT': '1',
       'Connection': 'keep-alive',
       'Upgrade-Insecure-Requests': '1',
@@ -369,1279 +1160,1596 @@ class InstagramService {
       'Sec-Fetch-Mode': 'navigate',
       'Sec-Fetch-Site': 'same-origin',
       'Sec-Fetch-User': '?1',
-      'Referer': 'https://www.instagram.com/',
-      'Cache-Control': 'no-cache',
-      'Pragma': 'no-cache',
     };
-
-    // Add session cookies if available
-    final cookieParts = <String>[];
-
-    if (_sessionId != null) cookieParts.add('sessionid=$_sessionId');
-    if (_csrfToken != null) cookieParts.add('csrftoken=$_csrfToken');
-    if (_mid != null) cookieParts.add('mid=$_mid');
-    if (_ig_did != null) cookieParts.add('ig_did=$_ig_did');
-    if (_ig_nrcb != null) cookieParts.add('ig_nrcb=$_ig_nrcb');
-
-    if (cookieParts.isNotEmpty) {
-      headers['Cookie'] = cookieParts.join('; ');
-    }
-
-    // Add CSRF token header if available
-    if (_csrfToken != null) {
-      headers['X-CSRFToken'] = _csrfToken!;
-    }
-
-    return headers;
-  }
-
-  /// Show comprehensive troubleshooting information for Instagram access issues
-  static void showInstagramTroubleshooting({
-    required String errorType,
-    String? specificError,
-  }) {
-    print('\n' + '=' * 70);
-    print('🚨 INSTAGRAM ACCESS TROUBLESHOOTING GUIDE');
-    print('=' * 70);
-    print('📋 Error Type: $errorType');
-    if (specificError != null) {
-      print('📋 Specific Error: $specificError');
-    }
-    print('📋 Timestamp: ${DateTime.now().toIso8601String()}');
-
-    print('\n🔍 COMMON CAUSES:');
-    print('   1. 🚫 Instagram Anti-Bot Protection');
-    print('      - Instagram automatically blocks suspected bot traffic');
-    print('      - Rate limiting after multiple requests');
-    print('      - User-Agent detection');
-    print('      - Missing or invalid session cookies');
-
-    print('   2. 🔐 Authentication Issues');
-    print('      - Session cookies not properly initialized');
-    print('      - CSRF tokens expired or missing');
-    print('      - Instagram requires login for specific content');
-
-    print('   2. 🌍 Geographic Restrictions');
-    print('      - Content blocked in certain regions');
-    print('      - Network-level Instagram blocking');
-
-    print('   3. 🔒 Content Access Issues');
-    print('      - Private account or reel');
-    print('      - Reel requires login to view');
-    print('      - Age-restricted content');
-
-    print('   4. 📶 Network/Technical Issues');
-    print('      - Poor internet connection');
-    print('      - Proxy or firewall interference');
-    print('      - DNS resolution problems');
-
-    print('\n⚙️ STEP-BY-STEP SOLUTIONS:');
-    print('\n   🔄 IMMEDIATE ACTIONS:');
-    print('   • Wait 10-15 minutes before retrying');
-    print('   • Close and restart the app completely');
-    print('   • Check if the reel URL works in a web browser');
-
-    print('\n   🌐 NETWORK SOLUTIONS:');
-    print('   • Switch between WiFi and mobile data');
-    print('   • Try connecting to a different WiFi network');
-    print('   • Use a VPN with servers in different countries');
-    print('   • Disable any proxy or VPN temporarily');
-
-    print('\n   🔗 URL VERIFICATION:');
-    print('   • Ensure the Instagram reel URL is complete and correct');
-    print('   • Verify the reel is public (not from a private account)');
-    print('   • Try a different Instagram reel URL for testing');
-
-    print('\n   ⏰ TIME-BASED SOLUTIONS:');
-    print('   • Try during off-peak hours (early morning/late night)');
-    print('   • Wait several hours if repeatedly blocked');
-    print('   • Instagram may have temporary server issues');
-
-    print('\n🔍 DIAGNOSTIC TESTS YOU CAN PERFORM:');
-    print('   1. Open instagram.com in your browser');
-    print('   2. Test the Network Diagnostics in the app');
-    print('   3. Try downloading from a different Instagram account');
-    print('   4. Check if other Instagram-related apps work');
-
-    print('\nℹ️ IMPORTANT NOTES:');
-    print(
-      '   • This is normal behavior - Instagram actively blocks automated access',
-    );
-    print('   • Success rates vary by location, time, and network');
-    print('   • Some reels may never be downloadable due to privacy settings');
-    print('   • Instagram frequently updates their blocking mechanisms');
-
-    print('=' * 70);
-  }
-
-  /// Demo method to show the enhanced debug logging capabilities
-  static void showDebugCapabilities() {
-    print('\n' + '=' * 70);
-    print('🚀 INSTAGRAM SERVICE DEBUG CAPABILITIES');
-    print('=' * 70);
-    print('📋 Enhanced Debug Features:');
-    print('   • Complete request/response logging');
-    print('   • GraphQL response structure analysis');
-    print('   • HTML content parsing with multiple strategies');
-    print('   • Network error diagnosis and troubleshooting');
-    print('   • Compression and encoding issue detection');
-    print('   • Instagram anti-bot protection analysis');
-    print('   • Step-by-step troubleshooting guides');
-    print('   • Visual indicators for easy log reading (🚀🟢🔴🔍📋)');
-
-    print('\n🔍 What You\'ll See in Debug Output:');
-    print('   1. 🚀 Network connectivity checks');
-    print('   2. 📝 Complete request details (headers, data, URLs)');
-    print('   3. 🟦 Response analysis (status, size, content-type)');
-    print('   4. 📋 JSON structure breakdown with all keys and values');
-    print('   5. 🔍 HTML parsing attempts with each strategy result');
-    print('   6. 🚨 Error analysis with specific troubleshooting steps');
-    print('   7. 📋 Success/failure summaries with actionable advice');
-
-    print('=' * 70);
-  }
-
-  /// Safely decode response body, handling compression if needed
-  static String _safeDecodeResponse(http.Response response) {
-    print('\n🔧 DECODING RESPONSE BODY...');
-    print(
-      '   • Content-Encoding: ${response.headers['content-encoding'] ?? 'none'}',
-    );
-    print(
-      '   • Content-Type: ${response.headers['content-type'] ?? 'unknown'}',
-    );
-    print('   • Raw Body Bytes: ${response.bodyBytes.length}');
-
-    // Check if response is compressed
-    final contentEncoding = response.headers['content-encoding']?.toLowerCase();
-    final isGzipped = contentEncoding?.contains('gzip') == true;
-    final isDeflated = contentEncoding?.contains('deflate') == true;
-    final isBrotli = contentEncoding?.contains('br') == true;
-
+    
     try {
-      if (isBrotli) {
-        print(
-          '   • 🔧 BROTLI compression detected - attempting decompression...',
-        );
-
-        // For Brotli, we'll try to use the HTTP client's automatic decompression
-        // If that fails, we'll inform the user that Brotli is not supported
+      // Try POST first (most likely for form submission)
+      final formBody = formData.entries
+          .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+          .join('&');
+      
+      print('📋 Sending POST request with form data: ${formData.keys.join(', ')}');
+      
+      final response = await http.post(
+        Uri.parse(submitUrl),
+        headers: submitHeaders,
+        body: formBody,
+      ).timeout(Duration(seconds: 30));
+      
+      print('📊 Form submission status: ${response.statusCode}');
+      
+      if (response.statusCode == 200) {
+        String responseBody;
         try {
-          // First, try if the HTTP client already decoded it
-          final decoded = response.body;
-          if (decoded.isNotEmpty &&
-              !decoded.startsWith('\u0000') &&
-              decoded.contains('<')) {
-            print('   • ✅ HTTP client auto-decompressed Brotli successfully');
-            print('   • Decompressed size: ${decoded.length} characters');
-            return decoded;
-          }
+          responseBody = response.body;
         } catch (e) {
-          print('   • ⚠️ HTTP client Brotli decompression failed: $e');
+          responseBody = String.fromCharCodes(response.bodyBytes);
         }
-
-        // Brotli manual decompression is not available in Dart without external packages
-        print(
-          '   • ❌ Brotli compression detected but manual decompression not available',
-        );
-        print(
-          '   • 💬 Instagram is using Brotli compression which requires special handling',
-        );
-
-        throw Exception(
-          'Instagram returned Brotli-compressed content. '
-          'This compression format requires additional setup. '
-          'Try again - Instagram may switch to a different compression method.',
-        );
-      }
-
-      if (isGzipped) {
-        print('   • 🔧 GZIP compression detected - decompressing...');
-        final decompressed = gzip.decode(response.bodyBytes);
-        final decoded = utf8.decode(decompressed);
-        print('   • ✅ GZIP decompression successful');
-        print('   • Decompressed size: ${decoded.length} characters');
-        return decoded;
-      } else if (isDeflated) {
-        print('   • 🔧 DEFLATE compression detected - decompressing...');
-        // For DEFLATE, we might need zlib decoder
-        try {
-          final decompressed = gzip.decode(response.bodyBytes);
-          final decoded = utf8.decode(decompressed);
-          print('   • ✅ DEFLATE decompression successful');
-          return decoded;
-        } catch (e) {
-          print('   • ⚠️ DEFLATE decompression failed, trying raw decode: $e');
-        }
-      }
-
-      // Try normal UTF-8 decoding
-      print('   • 🔧 No compression detected - using standard UTF-8 decode');
-      final decoded = utf8.decode(response.bodyBytes);
-      print('   • ✅ Standard decoding successful');
-      return decoded;
-    } catch (e) {
-      print('   • ❌ Decoding failed: $e');
-      print('   • 📊 Response analysis:');
-
-      if (response.bodyBytes.isNotEmpty) {
-        final firstBytes = response.bodyBytes.take(10).toList();
-        print('   • First 10 bytes: $firstBytes');
-
-        // Check for common file signatures
-        if (response.bodyBytes.length >= 2) {
-          final b1 = response.bodyBytes[0];
-          final b2 = response.bodyBytes[1];
-
-          if (b1 == 0x1f && b2 == 0x8b) {
-            print('   • 🔍 Detected GZIP signature (0x1f 0x8b)');
-            try {
-              final decompressed = gzip.decode(response.bodyBytes);
-              final decoded = utf8.decode(decompressed);
-              print('   • ✅ Manual GZIP decompression successful!');
-              return decoded;
-            } catch (gzipError) {
-              print('   • ❌ Manual GZIP decompression failed: $gzipError');
-            }
-          } else if (b1 == 0x78) {
-            print('   • 🔍 Detected DEFLATE signature (0x78)');
-          } else if (isBrotli) {
-            print(
-              '   • 🔍 Confirmed Brotli compression (Content-Encoding: br)',
-            );
-            print('   • 💬 Brotli decompression requires external library');
-          } else {
-            print('   • 🔍 Unknown compression format');
-          }
-        }
-      }
-
-      // As last resort, try the response.body property
-      try {
-        final bodyText = response.body;
-        print('   • ✅ Fallback to response.body successful');
-        return bodyText;
-      } catch (bodyError) {
-        print('   • ❌ Fallback to response.body failed: $bodyError');
-      }
-
-      // Special handling for Brotli
-      if (isBrotli) {
-        throw Exception(
-          'Instagram is using Brotli compression which is not supported. '
-          'This is a temporary limitation. Try again later as Instagram '
-          'may switch to GZIP compression on subsequent requests.',
-        );
-      }
-
-      throw Exception(
-        'Could not decode response body. '
-        'Content-Encoding: ${contentEncoding ?? 'none'}, '
-        'Original error: $e',
-      );
-    }
-  }
-
-  /// Check network connectivity before making requests - Optimized for release mode
-  static Future<bool> _checkConnectivity() async {
-    print('   • Testing network connectivity (release-mode optimized)...');
-
-    // First try a lightweight HTTP HEAD request to Instagram directly
-    try {
-      print('   • Attempting lightweight connectivity check to Instagram...');
-      final client = http.Client();
-      final request = http.Request(
-        'HEAD',
-        Uri.parse('https://www.instagram.com'),
-      );
-      request.headers.addAll({
-        'User-Agent': _selectOptimalUserAgent(),
-        'Connection': 'close',
-      });
-
-      final streamedResponse = await client
-          .send(request)
-          .timeout(Duration(seconds: 8));
-      client.close();
-
-      if (streamedResponse.statusCode >= 200 &&
-          streamedResponse.statusCode < 500) {
-        print(
-          '   • ✅ Instagram connectivity check successful (${streamedResponse.statusCode})',
-        );
-        return true;
-      } else {
-        print(
-          '   • ⚠️ Instagram returned ${streamedResponse.statusCode}, trying fallback...',
-        );
-      }
-    } catch (e) {
-      print(
-        '   • ⚠️ Instagram HEAD request failed: ${e.toString().substring(0, 100)}...',
-      );
-    }
-
-    // Fallback to multiple HTTP-based checks (no DNS lookup)
-    final testUrls = [
-      'https://www.google.com',
-      'https://httpbin.org/status/200',
-      'https://api.github.com',
-    ];
-
-    print('   • 🔄 Trying fallback connectivity checks...');
-    for (int i = 0; i < testUrls.length; i++) {
-      try {
-        final response = await http
-            .get(
-              Uri.parse(testUrls[i]),
-              headers: {
-                'User-Agent': _selectOptimalUserAgent(),
-                'Connection': 'close',
-              },
-            )
-            .timeout(Duration(seconds: 6));
-
-        if (response.statusCode >= 200 && response.statusCode < 500) {
-          print(
-            '   • ✅ Fallback connectivity check successful (${testUrls[i]} -> ${response.statusCode})',
-          );
-          return true;
-        }
-      } catch (e) {
-        print(
-          '   • ❌ Fallback ${i + 1} failed: ${e.toString().substring(0, 50)}...',
-        );
-        if (i < testUrls.length - 1) {
-          await Future.delayed(
-            Duration(milliseconds: 500),
-          ); // Brief delay between attempts
-        }
-      }
-    }
-
-    print('   • 🔴 All connectivity checks failed');
-    print('   • 💡 Network may be restricted or device is offline');
-    print('   • 💡 Try switching between WiFi and mobile data');
-    return false;
-  }
-
-  /// Simplified method to get Instagram post/reel data using direct approach
-  /// Primary method: Try GraphQL API first, fallback to HTML parsing with retry logic
-  Future<InstagramPostData> getPostData(
-    String postUrl, {
-    bool skipConnectivityCheck = false,
-  }) async {
-    print('\n' + '=' * 60);
-    print('🚀 STARTING INSTAGRAM REEL DOWNLOAD PROCESS');
-    print('=' * 60);
-    print('🚀 Original URL: $postUrl');
-    print('🚀 Shortcode: ${InstagramUtils.extractShortcodeFromUrl(postUrl)}');
-    print('🚀 Timestamp: ${DateTime.now().toIso8601String()}');
-    print('🚀 Skip Connectivity Check: $skipConnectivityCheck');
-
-    final selectedUA = _selectOptimalUserAgent();
-
-    // Check network connectivity first (unless skipped)
-    if (!skipConnectivityCheck) {
-      print('\n🔍 CHECKING NETWORK CONNECTIVITY...');
-      try {
-        if (!await _checkConnectivity()) {
-          print('🔴 Network connectivity check FAILED');
-          print('\n💡 CONNECTIVITY TROUBLESHOOTING:');
-          print('   • Check if you have an active internet connection');
-          print('   • Try switching between WiFi and mobile data');
-          print('   • Disable VPN if enabled and try again');
-          print('   • Check if your firewall is blocking the app');
-          print('   • Restart your router/modem if using WiFi');
-          print('   • Retrying automatically without connectivity check...');
-
-          // Auto-retry without connectivity check for release mode compatibility
-          print(
-            '\n🔄 AUTO-RETRY: Attempting without connectivity check for release mode...',
-          );
-          return await getPostData(postUrl, skipConnectivityCheck: true);
-        }
-        print(
-          '🟢 Network connectivity check PASSED - Internet connection available',
-        );
-      } catch (connectivityError) {
-        print('⚠️ Connectivity check failed with error: $connectivityError');
-        print(
-          '🔄 Proceeding without connectivity check (release mode compatibility)...',
-        );
-        // Don't throw here, just proceed without connectivity check
-      }
-    } else {
-      print('\n⚠️ SKIPPING NETWORK CONNECTIVITY CHECK (as requested)');
-    }
-
-    // Initialize Instagram session
-    print('\n🔐 SETTING UP INSTAGRAM SESSION...');
-    await _initializeSession();
-
-    // Add random delay to avoid rate limiting
-    final delay = 2 + _random.nextInt(4);
-    print('\n⏳ Adding random delay: ${delay}s to avoid rate limiting...');
-    await Future.delayed(Duration(seconds: delay.toInt()));
-
-    // Try extraction with retry logic
-    return await _performExtractionWithRetry(postUrl, selectedUA);
-  }
-
-  /// Release-mode optimized method that automatically handles connectivity issues
-  Future<InstagramPostData> getPostDataOptimized(String postUrl) async {
-    try {
-      // First attempt with connectivity check
-      return await getPostData(postUrl, skipConnectivityCheck: false);
-    } on Exception catch (e) {
-      final errorString = e.toString().toLowerCase();
-
-      // If it's a connectivity-related error, retry without connectivity check
-      if (errorString.contains('no internet') ||
-          errorString.contains('dns') ||
-          errorString.contains('network') ||
-          errorString.contains('connectivity') ||
-          errorString.contains('failed host lookup')) {
-        print(
-          '\n🔄 RELEASE MODE OPTIMIZATION: Retrying without connectivity check...',
-        );
-        return await getPostData(postUrl, skipConnectivityCheck: true);
-      }
-
-      // If it's not a connectivity issue, rethrow
-      rethrow;
-    }
-  }
-
-  /// Perform extraction with retry logic and exponential backoff
-  Future<InstagramPostData> _performExtractionWithRetry(
-    String postUrl,
-    String userAgent,
-  ) async {
-    const maxRetries = 3;
-    const baseDelaySeconds = 2;
-    String currentUserAgent = userAgent;
-
-    for (int attempt = 1; attempt <= maxRetries; attempt++) {
-      print('\n🔄 EXTRACTION ATTEMPT $attempt/$maxRetries');
-      print('=' * 50);
-
-      try {
-        // Strategy 1: Try GraphQL API first
-        if (attempt <= 2) {
-          // Try GraphQL for first 2 attempts
-          try {
-            print('\n🔄 ATTEMPTING STRATEGY 1: GraphQL API');
-            print('-' * 40);
-
-            final postData = await _tryGraphQLExtraction(
-              postUrl,
-              currentUserAgent,
-            );
-            if (postData.videoUrl != null && postData.videoUrl!.isNotEmpty) {
-              _recordUserAgentResult(currentUserAgent, true);
-              print('🟢 ✅ GRAPHQL STRATEGY SUCCESS!');
-              print('📊 EXTRACTED DATA:');
-              print('   • Video URL: ${postData.videoUrl}');
-              print('   • Username: ${postData.username ?? "N/A"}');
-              print(
-                '   • Caption: ${postData.caption?.substring(0, math.min(50, postData.caption!.length)) ?? "N/A"}...',
-              );
-              print('=' * 60);
-              return postData;
-            }
-          } catch (e) {
-            print('🔴 GraphQL Strategy FAILED: $e');
-
-            // Check if it's a rate limiting error (should not retry immediately)
-            if (e.toString().contains('429') ||
-                e.toString().contains('rate limit')) {
-              print('🔴 Rate limiting detected - extending delay before retry');
-              if (attempt < maxRetries) {
-                final extendedDelay =
-                    baseDelaySeconds *
-                    math.pow(2, attempt) *
-                    3; // 3x longer for rate limits
-                print(
-                  '⏳ Extended delay: ${extendedDelay.toInt()}s for rate limiting',
-                );
-                await Future.delayed(Duration(seconds: extendedDelay.toInt()));
-              }
-              if (attempt == maxRetries) rethrow; // Give up after max retries
-              continue; // Skip to next attempt
-            }
-          }
-        }
-
-        // Strategy 2: HTML parsing with intelligent user agent switching
-        try {
-          print('\n🔄 ATTEMPTING STRATEGY 2: HTML Parsing Fallback');
-          print('-' * 40);
-
-          // For retries, try different user agent types
-          if (attempt > 1) {
-            final preference = attempt == 2 ? 'desktop' : 'mobile';
-            currentUserAgent = _selectOptimalUserAgent(preference: preference);
-            print('   • Retry $attempt: Switching to $preference user agent');
-          }
-
-          final videoUrl = await resolveDirectVideoUrl(
-            postUrl,
-            customUserAgent: currentUserAgent,
-          );
-          final shortcode = InstagramUtils.extractShortcodeFromUrl(postUrl);
-
-          final finalPostData = InstagramPostData(
-            videoUrl: videoUrl.toString(),
-            isVideo: true,
-            shortcode: shortcode,
-          );
-
-          _recordUserAgentResult(currentUserAgent, true);
-          print('🟢 ✅ HTML PARSING STRATEGY SUCCESS!');
-          print('📊 FINAL DATA:');
-          print('   • Video URL: ${finalPostData.videoUrl}');
-          print('   • Is Video: ${finalPostData.isVideo}');
-          print('   • Shortcode: ${finalPostData.shortcode}');
-          print('=' * 60);
-
-          return finalPostData;
-        } catch (e) {
-          print('🔴 HTML Parsing Strategy FAILED: $e');
-
-          // Check if this is a content quality issue
-          if (e.toString().contains('incomplete page content') ||
-              e.toString().contains('anti-bot protection')) {
-            print(
-              '🔴 Content quality issue detected - likely Instagram blocking',
-            );
-
-            if (attempt < maxRetries) {
-              // For content quality issues, wait longer and try different approach
-              final extendedDelay = baseDelaySeconds * math.pow(2, attempt) * 2;
-              print(
-                '⏳ Extended delay for anti-bot protection: ${extendedDelay.toInt()}s',
-              );
-              await Future.delayed(Duration(seconds: extendedDelay.toInt()));
-
-              // Clear session for next attempt
-              if (attempt == 2) {
-                print('🗑️ Clearing session to try fresh authentication');
-                _clearSession();
-              }
-
-              continue;
-            }
-          }
-
-          // Check if we should retry
-          if (attempt < maxRetries) {
-            // Calculate exponential backoff delay
-            final delaySeconds =
-                (baseDelaySeconds * math.pow(2, attempt - 1)).toInt();
-            print(
-              '🔄 RETRY LOGIC: Attempt $attempt failed, retrying in ${delaySeconds}s...',
-            );
-            print(
-              '   • Error: ${e.toString().substring(0, math.min(100, e.toString().length))}...',
-            );
-
-            // Add jitter to prevent thundering herd
-            final jitter = _random.nextInt(2);
-            await Future.delayed(Duration(seconds: delaySeconds + jitter));
-
-            continue; // Retry
-          } else {
-            // Final attempt failed
-            _recordUserAgentResult(currentUserAgent, false);
-
-            // Provide comprehensive error information
-            showInstagramTroubleshooting(
-              errorType: 'All Strategies Failed After $maxRetries Attempts',
-              specificError: e.toString(),
-            );
-
-            throw Exception(
-              'Failed to download reel after $maxRetries attempts using both GraphQL and HTML strategies. '
-              'Instagram may be actively blocking access or the content may be restricted. '
-              'See the detailed troubleshooting guide in the debug output above.\n\n'
-              'Final error: ${e.toString()}',
-            );
-          }
-        }
-      } catch (e) {
-        // Handle unexpected errors
-        if (attempt == maxRetries) {
-          _recordUserAgentResult(currentUserAgent, false);
-          rethrow;
-        }
-
-        print('🔴 Unexpected error on attempt $attempt: $e');
-        final delaySeconds =
-            (baseDelaySeconds * math.pow(2, attempt - 1)).toInt();
-        await Future.delayed(Duration(seconds: delaySeconds));
-      }
-    }
-
-    // This should never be reached, but just in case
-    throw Exception('Max retries exceeded without successful extraction');
-  }
-
-  /// GraphQL API extraction method
-  Future<InstagramPostData> _tryGraphQLExtraction(
-    String postUrl,
-    String userAgent,
-  ) async {
-    final shortcode = InstagramUtils.extractShortcodeFromUrl(postUrl);
-    final graphqlData = InstagramUtils.encodeGraphqlRequestData(shortcode);
-
-    print('📝 GraphQL REQUEST DETAILS:');
-    print('   • Shortcode: $shortcode');
-    print('   • User Agent: ${userAgent.substring(0, 50)}...');
-    print('   • Endpoint: https://www.instagram.com/api/graphql/');
-
-    final headers = {
-      'User-Agent': userAgent,
-      'Accept': '*/*',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Accept-Encoding': 'gzip, deflate',
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'X-Requested-With': 'XMLHttpRequest',
-      'X-IG-App-ID': '936619743392459',
-      'X-FB-LSD': 'AVqbxe3J_YA',
-      'X-ASBD-ID': '129477',
-      'Origin': 'https://www.instagram.com',
-      'Referer': 'https://www.instagram.com/',
-      'Sec-Fetch-Dest': 'empty',
-      'Sec-Fetch-Mode': 'cors',
-      'Sec-Fetch-Site': 'same-origin',
-    };
-
-    // Add session cookies if available
-    if (_csrfToken != null) {
-      headers['X-CSRFToken'] = _csrfToken!;
-      final cookieParts = <String>[];
-      if (_sessionId != null) cookieParts.add('sessionid=$_sessionId');
-      if (_csrfToken != null) cookieParts.add('csrftoken=$_csrfToken');
-      if (_mid != null) cookieParts.add('mid=$_mid');
-      if (cookieParts.isNotEmpty) {
-        headers['Cookie'] = cookieParts.join('; ');
-      }
-    }
-
-    print('🔄 Sending GraphQL request...');
-
-    final response = await http
-        .post(
-          Uri.parse('https://www.instagram.com/api/graphql/'),
-          headers: headers,
-          body: graphqlData,
-        )
-        .timeout(
-          Duration(seconds: 30),
-          onTimeout: () {
-            throw Exception('GraphQL request timed out after 30 seconds');
-          },
-        );
-
-    print('📊 GraphQL Response:');
-    print('   • Status Code: ${response.statusCode}');
-    print('   • Content Length: ${response.body.length}');
-    print(
-      '   • Content-Type: ${response.headers['content-type'] ?? "unknown"}',
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'GraphQL API returned status ${response.statusCode}: ${response.reasonPhrase}',
-      );
-    }
-
-    // Check if response is HTML (indicates blocking)
-    if (response.body.trim().startsWith('<')) {
-      print(
-        '🔴 Instagram returned HTML instead of JSON - Anti-bot protection active!',
-      );
-      print(
-        '🔴 Full HTML response (first 1000 chars): ${response.body.substring(0, math.min(1000, response.body.length))}',
-      );
-      throw Exception(
-        'Instagram is blocking API access - returned HTML instead of JSON',
-      );
-    }
-
-    // Parse JSON response
-    Map<String, dynamic> jsonData;
-    try {
-      jsonData = json.decode(response.body) as Map<String, dynamic>;
-      print('🟢 Successfully parsed JSON response');
-      print('🟢 JSON Keys: ${jsonData.keys.toList()}');
-    } catch (e) {
-      print('🔴 JSON Parse Error: $e');
-      print(
-        '🔴 Raw response that failed to parse (first 1000 chars): ${response.body.substring(0, math.min(1000, response.body.length))}',
-      );
-      throw Exception('Invalid JSON response from GraphQL API');
-    }
-
-    // Extract data from GraphQL response
-    final data = jsonData['data'] as Map<String, dynamic>?;
-    if (data == null) {
-      print('🔴 GraphQL response missing "data" field');
-      print('🔴 Available keys: ${jsonData.keys.toList()}');
-      throw Exception('GraphQL response missing data field');
-    }
-
-    print('🟢 Data field exists: ${data.runtimeType}');
-    print('🟢 Data keys: ${data.keys.toList()}');
-
-    final mediaData = data['xdt_shortcode_media'] as Map<String, dynamic>?;
-    if (mediaData == null) {
-      print('🔴 No xdt_shortcode_media found in response');
-      print('🔴 Available data keys: ${data.keys.toList()}');
-      throw Exception('No media data found in GraphQL response');
-    }
-
-    print('🟢 Media data found: ${mediaData.keys.toList()}');
-
-    return InstagramPostData.fromGraphQL(mediaData);
-  }
-
-  /// Resolves direct video URL from Instagram post/reel URL using HTML parsing
-  Future<Uri> resolveDirectVideoUrl(
-    String reelUrl, {
-    String? customUserAgent,
-  }) async {
-    print('\n' + '=' * 60);
-    print('🚀 STARTING HTML REQUEST');
-    print('=' * 60);
-
-    final uri = Uri.parse(reelUrl.trim());
-    final selectedUA = customUserAgent ?? _selectOptimalUserAgent();
-
-    final headers = _getAuthenticatedHeaders(selectedUA);
-
-    print('📝 REQUEST DETAILS:');
-    print('   • URL: $reelUrl');
-    print('   • Method: GET');
-    print('   • Parsed URI: $uri');
-    print('   • Selected User Agent: $selectedUA');
-    print('   • 🚫 Brotli compression excluded to avoid decompression issues');
-    print('   • 🔐 Using authenticated session headers');
-    print(
-      '   • 🍪 Session cookies: ${_sessionId != null ? "Present" : "Not available"}',
-    );
-
-    print('\n📝 REQUEST HEADERS:');
-    headers.forEach((key, value) {
-      // Mask sensitive cookie data
-      if (key == 'Cookie') {
-        print(
-          '   • $key: ${value.length > 50 ? value.substring(0, 50) + "..." : value}',
-        );
-      } else {
-        print('   • $key: $value');
-      }
-    });
-
-    print('\n🔄 Sending HTML request...');
-
-    try {
-      final res = await http
-          .get(uri, headers: headers)
-          .timeout(
-            const Duration(seconds: 30),
-            onTimeout: () {
-              print('🔴 ⏰ HTML REQUEST TIMEOUT after 30 seconds');
-              throw Exception('Request timed out while fetching reel page.');
+        
+        print('📊 Response length: ${responseBody.length} chars');
+        
+        // The response should contain the download link or redirect to it
+        final result = await _parseIgramResponse(responseBody, baseUrl);
+        if (result != null) return result;
+        
+      } else if (response.statusCode == 302 || response.statusCode == 301) {
+        // Handle redirect (common after form submission)
+        final location = response.headers['location'];
+        if (location != null) {
+          print('🔄 Following form submission redirect: $location');
+          
+          final redirectUrl = location.startsWith('http') ? location : '$baseUrl$location';
+          
+          final redirectResponse = await http.get(
+            Uri.parse(redirectUrl),
+            headers: {
+              'User-Agent': submitHeaders['User-Agent']!,
+              'Accept': submitHeaders['Accept']!,
+              'Referer': '$baseUrl/story-saver',
             },
           );
-
-      if (res.statusCode != 200) {
-        print('\n🔴 ❌ HTML REQUEST FAILED');
-        print('🔴 Status Code: ${res.statusCode}');
-        print('🔴 Status Text: ${res.reasonPhrase ?? 'Unknown'}');
-        print('🔴 Response Headers: ${res.headers}');
-
-        throw Exception(
-          'Failed to load page (HTTP ${res.statusCode}). '
-          'Reel may be private or requires login.',
+          
+          if (redirectResponse.statusCode == 200) {
+            String redirectBody;
+            try {
+              redirectBody = redirectResponse.body;
+            } catch (e) {
+              redirectBody = String.fromCharCodes(redirectResponse.bodyBytes);
+            }
+            
+            final result = await _parseIgramResponse(redirectBody, baseUrl);
+            if (result != null) return result;
+          }
+        }
+      } else if (response.statusCode == 405) {
+        // POST not allowed, try GET with parameters
+        print('📋 POST not allowed, trying GET with parameters...');
+        
+        final getUrl = '$submitUrl?${formData.entries.map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}').join('&')}';
+        
+        final getResponse = await http.get(
+          Uri.parse(getUrl),
+          headers: {
+            'User-Agent': submitHeaders['User-Agent']!,
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Referer': '$baseUrl/story-saver',
+          },
         );
+        
+        if (getResponse.statusCode == 200) {
+          String getBody;
+          try {
+            getBody = getResponse.body;
+          } catch (e) {
+            getBody = String.fromCharCodes(getResponse.bodyBytes);
+          }
+          
+          final result = await _parseIgramResponse(getBody, baseUrl);
+          if (result != null) return result;
+        }
       }
-
-      // Try to decode response body safely with proper compression handling
-      String html;
+      
+    } catch (e) {
+      print('⚠️ Form submission failed: $e');
+    }
+    
+    return null;
+  }
+  
+  Future<InstagramPostData?> _simulateBrowserInteraction(String baseUrl, String storyUrl) async {
+    print('🌍 Simulating browser interaction with igram.world...');
+    
+    // Step 1: Load the main page to get session cookies and form data
+    final pageUrl = '$baseUrl/story-saver';
+    
+    // Use realistic browser headers WITHOUT Accept-Encoding to avoid GZIP issues
+    final browserHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'DNT': '1',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Cache-Control': 'max-age=0',
+    };
+    
+    print('📋 Loading igram.world story-saver page...');
+    
+    try {
+      final pageResponse = await http.get(Uri.parse(pageUrl), headers: browserHeaders)
+          .timeout(Duration(seconds: 30));
+      
+      if (pageResponse.statusCode != 200) {
+        throw Exception('Failed to load igram.world page: ${pageResponse.statusCode}');
+      }
+      
+      // Handle potential GZIP response
+      String responseBody;
       try {
-        html = _safeDecodeResponse(res);
-        print('\n🟢 ✅ RESPONSE BODY DECODED SUCCESSFULLY');
-        print('   • Decoded Size: ${html.length} characters');
-
-        // Check if body is actually HTML
-        final looksLikeHtml =
-            html.trim().startsWith('<') ||
-            html.contains('<html') ||
-            html.contains('<!DOCTYPE');
-        print('   • Looks like HTML: $looksLikeHtml');
-
-        if (!looksLikeHtml) {
-          print('🔴 ⚠️ Response does not look like HTML!');
-          print(
-            '🔴 First 200 chars: ${html.length > 200 ? html.substring(0, 200) + "..." : html}',
+        responseBody = pageResponse.body;
+        if (responseBody.isEmpty) {
+          throw FormatException('Empty response body');
+        }
+      } catch (e) {
+        print('⚠️ Response decoding issue: $e');
+        // Try to get raw response if standard decoding fails
+        responseBody = String.fromCharCodes(pageResponse.bodyBytes);
+      }
+      
+      print('✅ Page loaded (${responseBody.length} chars)');
+      
+      // Step 2: Extract form details and CSRF tokens
+      final formData = _extractIgramFormData(responseBody);
+      
+      // Step 3: Simulate JavaScript form population
+      formData['url'] = storyUrl; // Fill the URL input
+      
+      // Step 4: Wait a bit to simulate human interaction
+      await Future.delayed(Duration(milliseconds: 1500));
+      
+      // Step 5: Submit form with AJAX headers (like JavaScript would)
+      final ajaxHeaders = {
+        'User-Agent': browserHeaders['User-Agent']!,
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+        'Origin': baseUrl,
+        'Referer': pageUrl,
+        'X-Requested-With': 'XMLHttpRequest',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-origin',
+      };
+      
+      // Try multiple potential endpoints that JavaScript might use
+      final endpoints = [
+        '/ajax/story',
+        '/api/story',
+        '/process',
+        '/submit',
+        '/download',
+        '/story-saver', // POST to same page
+      ];
+      
+      for (final endpoint in endpoints) {
+        final submitUrl = '$baseUrl$endpoint';
+        print('📋 Trying AJAX submission to: $submitUrl');
+        
+        try {
+          final formBody = formData.entries
+              .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+              .join('&');
+          
+          final submitResponse = await http.post(
+            Uri.parse(submitUrl),
+            headers: ajaxHeaders,
+            body: formBody,
+          ).timeout(Duration(seconds: 30));
+          
+          print('📊 Response status: ${submitResponse.statusCode}');
+          
+          if (submitResponse.statusCode == 200) {
+            // Handle potential GZIP response
+            String submitResponseBody;
+            try {
+              submitResponseBody = submitResponse.body;
+            } catch (e) {
+              submitResponseBody = String.fromCharCodes(submitResponse.bodyBytes);
+            }
+            
+            // Try to parse as JSON first (AJAX response)
+            try {
+              final jsonData = json.decode(submitResponseBody);
+              if (jsonData is Map) {
+                // Look for media URL in JSON response
+                final mediaUrl = jsonData['download_url'] ?? 
+                               jsonData['video_url'] ?? 
+                               jsonData['media_url'] ?? 
+                               jsonData['url'];
+                
+                if (mediaUrl != null && mediaUrl.toString().isNotEmpty) {
+                  print('✅ Found media URL in JSON: ${mediaUrl.toString().substring(0, math.min(100, mediaUrl.toString().length))}...');
+                  
+                  return InstagramPostData(
+                    videoUrl: mediaUrl.toString(),
+                    displayUrl: jsonData['thumbnail'] ?? jsonData['thumb'],
+                    isVideo: !mediaUrl.toString().contains('.jpg') && !mediaUrl.toString().contains('.png'),
+                  );
+                }
+              }
+            } catch (e) {
+              // Not JSON, try parsing as HTML
+              print('📋 Response is HTML, parsing...');
+              
+              // Look for JavaScript variables or new content in the HTML
+              final result = _parseJavaScriptResponse(submitResponseBody);
+              if (result != null) return result;
+            }
+          } else if (submitResponse.statusCode == 302) {
+            // Handle redirect
+            final location = submitResponse.headers['location'];
+            if (location != null) {
+              print('🔄 Following redirect: $location');
+              final redirectResponse = await http.get(
+                Uri.parse(location.startsWith('http') ? location : '$baseUrl$location'),
+                headers: browserHeaders,
+              );
+              
+              if (redirectResponse.statusCode == 200) {
+                String redirectBody;
+                try {
+                  redirectBody = redirectResponse.body;
+                } catch (e) {
+                  redirectBody = String.fromCharCodes(redirectResponse.bodyBytes);
+                }
+                final result = _parseJavaScriptResponse(redirectBody);
+                if (result != null) return result;
+              }
+            }
+          }
+          
+          // Small delay between requests
+          await Future.delayed(Duration(milliseconds: 500));
+          
+        } catch (e) {
+          print('⚠️ Request to $submitUrl failed: $e');
+          continue;
+        }
+      }
+      
+    } catch (e) {
+      print('⚠️ Browser simulation failed: $e');
+      throw e;
+    }
+    
+    return null;
+  }
+  
+  Map<String, String> _extractIgramFormData(String html) {
+    final formData = <String, String>{};
+    
+    // Extract CSRF token
+    final csrfPatterns = [
+      RegExp(r'<meta[^>]*name=["\x27]csrf-token["\x27][^>]*content=["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'<input[^>]*name=["\x27]_token["\x27][^>]*value=["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'window\._token\s*=\s*["\x27]([^"\x27]+)["\x27]'),
+    ];
+    
+    for (final pattern in csrfPatterns) {
+      final match = pattern.firstMatch(html);
+      if (match != null) {
+        formData['_token'] = match.group(1)!;
+        print('🔐 Found CSRF token');
+        break;
+      }
+    }
+    
+    // Extract all hidden input fields
+    final hiddenPattern = RegExp(r'<input[^>]*type=["\x27]hidden["\x27][^>]*name=["\x27]([^"\x27]+)["\x27][^>]*value=["\x27]([^"\x27]*)["\x27]');
+    final hiddenMatches = hiddenPattern.allMatches(html);
+    for (final match in hiddenMatches) {
+      final name = match.group(1)!;
+      final value = match.group(2) ?? '';
+      formData[name] = value;
+      print('📋 Found hidden field: $name = $value');
+    }
+    
+    // Look for form method and action
+    final methodPattern = RegExp(r'<form[^>]*method=["\x27]([^"\x27]+)["\x27]');
+    final methodMatch = methodPattern.firstMatch(html);
+    if (methodMatch != null) {
+      formData['_method'] = methodMatch.group(1)!;
+      print('📋 Found form method: ${methodMatch.group(1)}');
+    }
+    
+    return formData;
+  }
+  
+  String? _extractFormAction(String html) {
+    final actionPattern = RegExp(r'<form[^>]*action=["\x27]([^"\x27]+)["\x27]');
+    final actionMatch = actionPattern.firstMatch(html);
+    if (actionMatch != null) {
+      final action = actionMatch.group(1)!;
+      print('📋 Found form action: $action');
+      return action;
+    }
+    return null;
+  }
+  
+  Future<InstagramPostData?> _parseIgramResponse(String html, String baseUrl) async {
+    print('🔍 Parsing igram.world response...');
+    
+    // Strategy 1: Look for direct download links
+    final downloadLinkPatterns = [
+      RegExp(r'href=["\x27]([^"\x27]*(?:instagram|fbcdn|cdninstagram)[^"\x27]*\.(?:mp4|jpg|jpeg|png)[^"\x27]*)["\x27][^>]*(?:download|target)'),
+      RegExp(r'<a[^>]*download[^>]*href=["\x27]([^"\x27]+\.(?:mp4|jpg|jpeg|png)[^"\x27]*)["\x27]'),
+      RegExp(r'data-download-url=["\x27]([^"\x27]+\.(?:mp4|jpg|jpeg|png)[^"\x27]*)["\x27]'),
+    ];
+    
+    for (final pattern in downloadLinkPatterns) {
+      final match = pattern.firstMatch(html);
+      if (match != null) {
+        var url = match.group(1)!;
+        if (!url.contains('favicon') && !url.contains('icon') && url.length > 30) {
+          
+          // Make URL absolute if needed
+          if (url.startsWith('/')) {
+            url = '$baseUrl$url';
+          }
+          
+          print('✅ Found download link: ${url.substring(0, math.min(100, url.length))}...');
+          
+          return InstagramPostData(
+            videoUrl: url,
+            displayUrl: null,
+            isVideo: url.contains('.mp4'),
           );
-
-          // Check if it might be JSON or other format
-          if (html.trim().startsWith('{') || html.trim().startsWith('[')) {
-            print('🔴 Response appears to be JSON instead of HTML');
-            throw Exception(
-              'Instagram returned JSON instead of expected HTML page',
-            );
+        }
+      }
+    }
+    
+    // Strategy 2: Look for JavaScript variables with media URLs
+    final jsMediaPatterns = [
+      RegExp(r'var\s+mediaUrl\s*=\s*["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'window\.mediaUrl\s*=\s*["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'downloadUrl\s*[:"]\s*["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'"url"\s*:\s*"([^"]+\.(?:mp4|jpg|jpeg|png)[^"]*)")'),
+      RegExp(r'"download_url"\s*:\s*"([^"]+\.(?:mp4|jpg|jpeg|png)[^"]*)")'),
+    ];
+    
+    for (final pattern in jsMediaPatterns) {
+      final match = pattern.firstMatch(html);
+      if (match != null) {
+        var url = match.group(1)!;
+        if (!url.contains('favicon') && !url.contains('icon') && url.length > 30) {
+          
+          if (url.startsWith('/')) {
+            url = '$baseUrl$url';
+          }
+          
+          print('✅ Found JS media URL: ${url.substring(0, math.min(100, url.length))}...');
+          
+          return InstagramPostData(
+            videoUrl: url,
+            displayUrl: null,
+            isVideo: url.contains('.mp4'),
+          );
+        }
+      }
+    }
+    
+    // Strategy 3: Look for JSON data embedded in scripts
+    final scriptPattern = RegExp(r'<script[^>]*>([\s\S]*?)</script>');
+    final scriptMatches = scriptPattern.allMatches(html);
+    
+    for (final scriptMatch in scriptMatches) {
+      final scriptContent = scriptMatch.group(1) ?? '';
+      
+      // Try to find JSON objects with media URLs
+      try {
+        final jsonPattern = RegExp(r'\{[^}]*(?:download_url|video_url|media_url|url)[^}]*\}');
+        final jsonMatches = jsonPattern.allMatches(scriptContent);
+        
+        for (final jsonMatch in jsonMatches) {
+          try {
+            final jsonStr = jsonMatch.group(0)!;
+            final jsonData = json.decode(jsonStr);
+            
+            if (jsonData is Map) {
+              final mediaUrl = jsonData['download_url'] ?? 
+                             jsonData['video_url'] ?? 
+                             jsonData['media_url'] ?? 
+                             jsonData['url'];
+              
+              if (mediaUrl != null && mediaUrl.toString().isNotEmpty) {
+                var url = mediaUrl.toString();
+                if (!url.contains('favicon') && !url.contains('icon') && url.length > 30) {
+                  
+                  if (url.startsWith('/')) {
+                    url = '$baseUrl$url';
+                  }
+                  
+                  print('✅ Found JSON media URL: ${url.substring(0, math.min(100, url.length))}...');
+                  
+                  return InstagramPostData(
+                    videoUrl: url,
+                    displayUrl: jsonData['thumbnail'] ?? jsonData['thumb'],
+                    isVideo: url.contains('.mp4'),
+                  );
+                }
+              }
+            }
+          } catch (e) {
+            // Continue to next match
           }
         }
       } catch (e) {
-        print('\n🔴 ❌ FAILED TO DECODE RESPONSE BODY');
-        print('🔴 Decode Error: $e');
-        print('🔴 Error Type: ${e.runtimeType}');
-
-        throw Exception(
-          'Failed to decode Instagram page response. '
-          'The server may have returned compressed or corrupted data. '
-          'Original error: $e',
-        );
+        // Continue to next script
       }
-
-      // Debug: Log HTML response info
-      print('\n🟦 📋 HTML RESPONSE ANALYSIS');
-      print('=' * 50);
-      print('🟦 Request URL: $reelUrl');
-      print('🟦 Status Code: ${res.statusCode}');
-      print('🟦 HTML Size: ${html.length} characters');
-
-      // Extract and analyze HTML structure
-      final title = _extractTitle(html);
-      final hasVideoMeta = html.contains('og:video');
-      final hasVideoSecureMeta = html.contains('og:video:secure_url');
-      final hasJsonData = html.contains('video_url');
-      final hasPlaybackUrl = html.contains('playback_url');
-      final requiresLogin =
-          html.contains('loginForm') || html.contains('Please log in');
-      final isPrivate = html.contains('This Account is Private');
-
-      print('\n📊 HTML CONTENT ANALYSIS:');
-      print('   • Page Title: ${title ?? 'NOT FOUND'}');
-      print('   • Contains og:video meta: $hasVideoMeta');
-      print('   • Contains og:video:secure_url meta: $hasVideoSecureMeta');
-      print('   • Contains JSON video_url: $hasJsonData');
-      print('   • Contains playback_url: $hasPlaybackUrl');
-      print('   • Requires Login: $requiresLogin');
-      print('   • Is Private Account: $isPrivate');
-
-      // Check if page requires login
-      if (requiresLogin || isPrivate) {
-        throw Exception(
-          'This reel requires login to view or is from a private account.',
-        );
+    }
+    
+    // Strategy 4: Look for any Instagram CDN URLs in the HTML
+    final cdnPatterns = [
+      RegExp(r'"(https://[^"]*instagram[^"]*\.(?:mp4|jpg|jpeg|png)[^"]*?)"'),
+      RegExp(r'"(https://[^"]*fbcdn[^"]*\.(?:mp4|jpg|jpeg|png)[^"]*?)"'),
+      RegExp(r'"(https://[^"]*cdninstagram[^"]*\.(?:mp4|jpg|jpeg|png)[^"]*?)"'),
+    ];
+    
+    for (final pattern in cdnPatterns) {
+      final matches = pattern.allMatches(html);
+      for (final match in matches) {
+        var url = match.group(1)!;
+        if (!url.contains('favicon') && !url.contains('icon') && url.length > 50) {
+          print('✅ Found CDN URL: ${url.substring(0, math.min(100, url.length))}...');
+          
+          return InstagramPostData(
+            videoUrl: url,
+            displayUrl: null,
+            isVideo: url.contains('.mp4'),
+          );
+        }
       }
-
-      // Try video extraction strategies
-      return await _extractVideoFromHtml(html, reelUrl);
+    }
+    
+    // Strategy 5: Debug - show what we found
+    print('🔍 DEBUG: Response contains ${html.length} characters');
+    
+    // Look for any media files mentioned
+    final allMediaPattern = RegExp(r'(?:mp4|jpg|jpeg|png)');
+    final mediaMatches = allMediaPattern.allMatches(html);
+    print('🔍 Found ${mediaMatches.length} media file references');
+    
+    // Show a sample of the response for debugging
+    final sample = html.substring(0, math.min(800, html.length));
+    print('📄 Response sample: $sample');
+    
+    return null;
+  }
+  
+  InstagramPostData? _parseJavaScriptResponse(String html) {
+    print('📋 Parsing JavaScript response...');
+    
+    // Look for JavaScript variables containing media URLs
+    final jsPatterns = [
+      RegExp(r'var\s+downloadUrl\s*=\s*["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'window\.downloadUrl\s*=\s*["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'data-download-url=["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'download_url["\x27]?\s*:\s*["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'"video_url"\s*:\s*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'"image_url"\s*:\s*"([^"]+\.(?:jpg|jpeg|png)[^"]*)"'),
+      RegExp(r'href=["\x27]([^"\x27]*(?:instagram|fbcdn)[^"\x27]*\.(?:mp4|jpg|jpeg|png)[^"\x27"]*)["\x27]'),
+    ];
+    
+    for (final pattern in jsPatterns) {
+      final match = pattern.firstMatch(html);
+      if (match != null) {
+        final url = match.group(1)!;
+        if (!url.contains('favicon') && !url.contains('icon') && url.length > 30) {
+          print('✅ Found media URL in JavaScript: ${url.substring(0, math.min(100, url.length))}...');
+          
+          return InstagramPostData(
+            videoUrl: url,
+            displayUrl: null,
+            isVideo: url.contains('.mp4'),
+          );
+        }
+      }
+    }
+    
+    // Look for dynamically loaded content containers
+    final containerPattern = RegExp(r'<div[^>]*class=["\x27][^"\x27]*download[^"\x27]*["\x27][^>]*>([^<]+)</div>');
+    final containerMatch = containerPattern.firstMatch(html);
+    if (containerMatch != null) {
+      print('📋 Found download container: ${containerMatch.group(1)}');
+    }
+    
+    return null;
+  }
+  
+  Future<InstagramPostData?> _tryHiddenApiEndpoints(String baseUrl, String storyUrl) async {
+    // Common hidden API patterns found in real websites
+    final hiddenApis = [
+      '$baseUrl/api/instagram/story',
+      '$baseUrl/api/story/download',
+      '$baseUrl/api/v1/story/process',
+      '$baseUrl/story/api',
+      '$baseUrl/ajax/story',
+      '$baseUrl/api/download',
+      '$baseUrl/api/process',
+    ];
+    
+    for (final apiUrl in hiddenApis) {
+      try {
+        print('📝 Trying hidden API: $apiUrl');
+        
+        // Try GET first (safer)
+        final getResponse = await http.get(
+          Uri.parse('$apiUrl?url=${Uri.encodeComponent(storyUrl)}'),
+          headers: {
+            'Accept': 'application/json',
+            'Referer': '$baseUrl/story-saver',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+        ).timeout(Duration(seconds: 15));
+        
+        if (getResponse.statusCode == 200) {
+          try {
+            return _parseStoryWebResponse(getResponse.body, storyUrl);
+          } catch (e) {
+            print('⚠️ Failed to parse hidden API response: $e');
+          }
+        }
+      } catch (e) {
+        // Silently continue to next API
+        continue;
+      }
+    }
+    
+    return null;
+  }
+  
+  Future<InstagramPostData?> _simulateFormSubmission(String baseUrl, String pageHtml, String storyUrl) async {
+    // Extract potential form submission endpoints from the HTML
+    final formPatterns = [
+      RegExp(r'<form[^>]*action=["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'action\s*:\s*["\x27]([^"\x27]+)["\x27]'),
+      RegExp(r'url\s*:\s*["\x27]([^"\x27]+/(?:process|submit|download)[^"\x27]*)["\x27]'),
+    ];
+    
+    final endpoints = <String>{};
+    for (final pattern in formPatterns) {
+      final matches = pattern.allMatches(pageHtml);
+      for (final match in matches) {
+        var endpoint = match.group(1)!;
+        if (endpoint.startsWith('/')) {
+          endpoint = '$baseUrl$endpoint';
+        }
+        endpoints.add(endpoint);
+      }
+    }
+    
+    if (endpoints.isEmpty) {
+      endpoints.add('$baseUrl/story-saver'); // Default fallback
+    }
+    
+    for (final endpoint in endpoints) {
+      try {
+        print('📋 Trying form submission to: $endpoint');
+        
+        final response = await http.post(
+          Uri.parse(endpoint),
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Origin': baseUrl,
+            'Referer': '$baseUrl/story-saver',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          },
+          body: 'url=${Uri.encodeComponent(storyUrl)}',
+        ).timeout(Duration(seconds: 30));
+        
+        if (response.statusCode == 200) {
+          // Handle potential GZIP response
+          String responseBody;
+          try {
+            responseBody = response.body;
+          } catch (e) {
+            responseBody = String.fromCharCodes(response.bodyBytes);
+          }
+          
+          try {
+            return _parseStoryWebResponse(responseBody, storyUrl);
+          } catch (e) {
+            try {
+              return _parseJavaScriptResponse(responseBody);
+            } catch (e2) {
+              print('⚠️ Failed to parse form response: $e2');
+            }
+          }
+        }
+        
+      } catch (e) {
+        print('⚠️ Form submission to $endpoint failed: $e');
+        continue;
+      }
+    }
+    
+    return null;
+  }
+  
+  /// Submit the story form with proper form data
+  Future<InstagramPostData?> _submitStoryForm(Map<String, dynamic> service, String pageHtml, String storyUrl, Map<String, String> formData) async {
+    final serviceName = service['name'] as String;
+    final pageUrl = service['pageUrl'] as String;
+    final baseUrl = Uri.parse(pageUrl).origin;
+    
+    // Build comprehensive list of potential submit URLs based on extracted data and common patterns
+    final submitUrls = <String>[];
+    
+    // Add extracted URLs first (highest priority)
+    if (formData.containsKey('action_url')) {
+      var actionUrl = formData['action_url']!;
+      if (actionUrl.startsWith('/')) {
+        actionUrl = '$baseUrl$actionUrl';
+      }
+      submitUrls.add(actionUrl);
+    }
+    
+    if (formData.containsKey('js_endpoint')) {
+      var jsEndpoint = formData['js_endpoint']!;
+      if (jsEndpoint.startsWith('/')) {
+        jsEndpoint = '$baseUrl$jsEndpoint';
+      }
+      submitUrls.add(jsEndpoint);
+    }
+    
+    if (formData.containsKey('potential_endpoint')) {
+      var endpoint = formData['potential_endpoint']!;
+      if (endpoint.startsWith('/')) {
+        endpoint = '$baseUrl$endpoint';
+      }
+      submitUrls.add(endpoint);
+    }
+    
+    // Add common patterns for igram.world specifically
+    if (serviceName == 'igram.world') {
+      submitUrls.addAll([
+        '$baseUrl/story-saver', // Try POST to the same page
+        '$baseUrl/process', // Common processing endpoint
+        '$baseUrl/api/v1/story', // API endpoint
+        '$baseUrl/download', // Generic download endpoint
+      ]);
+    }
+    
+    // Add generic fallback URLs
+    submitUrls.addAll([
+      '$baseUrl/download',
+      '$baseUrl/api/download',
+      '$baseUrl/story-download',
+      '$baseUrl/api/story',
+      '$pageUrl', // Try POST to the same page
+    ]);
+    
+    // Remove duplicates while preserving order
+    final uniqueSubmitUrls = <String>[];
+    for (final url in submitUrls) {
+      if (!uniqueSubmitUrls.contains(url)) {
+        uniqueSubmitUrls.add(url);
+      }
+    }
+    
+    for (final submitUrl in uniqueSubmitUrls) {
+      try {
+        print('📝 Trying submit URL: $submitUrl');
+        
+        // Prepare form data with intelligent field naming
+        final formPayload = <String, String>{};
+        
+        // Use the extracted input field name if available, otherwise try common names
+        final urlFieldName = formData['input_name'] ?? 'url';
+        formPayload[urlFieldName] = storyUrl;
+        
+        // Add common alternative field names
+        formPayload['url'] = storyUrl;
+        formPayload['link'] = storyUrl;
+        formPayload['instagram_url'] = storyUrl;
+        formPayload['story_url'] = storyUrl;
+        formPayload['instagram_link'] = storyUrl;
+        
+        // Add all extracted form data (CSRF tokens, hidden fields, etc.)
+        for (final entry in formData.entries) {
+          if (!['action_url', 'js_endpoint', 'potential_endpoint', 'input_name'].contains(entry.key)) {
+            formPayload[entry.key] = entry.value;
+          }
+        }
+        
+        print('📝 Form payload: ${formPayload.keys.join(', ')} (${formPayload.length} fields)');
+        
+        // Try different request formats with enhanced headers
+        final requestFormats = [
+          {
+            'headers': {
+              'Accept': 'application/json, text/plain, */*',
+              'Accept-Language': 'en-US,en;q=0.9',
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Origin': baseUrl,
+              'Referer': pageUrl,
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'X-Requested-With': 'XMLHttpRequest',
+              'Cache-Control': 'no-cache',
+              'Pragma': 'no-cache',
+            },
+            'body': formPayload.entries.map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}').join('&'),
+            'description': 'AJAX form submission'
+          },
+          {
+            'headers': {
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.9',
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Origin': baseUrl,
+              'Referer': pageUrl,
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Cache-Control': 'no-cache',
+              'Upgrade-Insecure-Requests': '1',
+            },
+            'body': formPayload.entries.map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}').join('&'),
+            'description': 'Standard form submission'
+          },
+          {
+            'headers': {
+              'Accept': 'application/json',
+              'Content-Type': 'application/json',
+              'Origin': baseUrl,
+              'Referer': pageUrl,
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+            'body': json.encode(formPayload),
+            'description': 'JSON API call'
+          },
+        ];
+        
+        for (final format in requestFormats) {
+          try {
+            print('📝 Trying ${format['description']} for $submitUrl');
+            
+            final submitResponse = await http.post(
+              Uri.parse(submitUrl),
+              headers: format['headers'] as Map<String, String>,
+              body: format['body'] as String,
+            ).timeout(Duration(seconds: 30));
+            
+            print('📊 Submit response status: ${submitResponse.statusCode}');
+            
+            print('📊 Response length: ${submitResponse.body.length} chars');
+            print('📊 Response headers: ${submitResponse.headers}');
+            
+            if (submitResponse.statusCode == 200) {
+              try {
+                return _parseStoryWebResponse(submitResponse.body, storyUrl);
+              } catch (e) {
+                print('⚠️ Failed to parse JSON response: $e');
+                // Try parsing as HTML
+                try {
+                  return _parseStoryFromHtml(submitResponse.body, storyUrl);
+                } catch (e2) {
+                  print('⚠️ Failed to parse HTML response: $e2');
+                  // Log first 500 chars of response for debugging
+                  final sample = submitResponse.body.substring(0, math.min(500, submitResponse.body.length));
+                  print('📄 Response sample: $sample');
+                }
+              }
+            } else if (submitResponse.statusCode == 302 || submitResponse.statusCode == 301) {
+              // Handle redirects
+              final location = submitResponse.headers['location'];
+              if (location != null) {
+                print('🔄 Following redirect to: $location');
+                try {
+                  final redirectUrl = location.startsWith('http') ? location : '$baseUrl$location';
+                  final redirectResponse = await http.get(
+                    Uri.parse(redirectUrl),
+                    headers: {
+                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                      'Referer': pageUrl,
+                      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    },
+                  ).timeout(Duration(seconds: 30));
+                  
+                  if (redirectResponse.statusCode == 200) {
+                    try {
+                      return _parseStoryWebResponse(redirectResponse.body, storyUrl);
+                    } catch (e) {
+                      return _parseStoryFromHtml(redirectResponse.body, storyUrl);
+                    }
+                  }
+                } catch (e) {
+                  print('⚠️ Redirect follow failed: $e');
+                }
+              }
+            } else {
+              print('❌ Submit failed with status: ${submitResponse.statusCode}');
+              if (submitResponse.body.isNotEmpty) {
+                final sample = submitResponse.body.substring(0, math.min(200, submitResponse.body.length));
+                print('📄 Error response: $sample');
+              }
+            }
+            
+          } catch (e) {
+            print('⚠️ Request format ${format['description']} failed: $e');
+            // Add a small delay between attempts to avoid rate limiting
+            await Future.delayed(Duration(milliseconds: 500));
+            continue;
+          }
+        }
+        
+        // Add delay between different URLs to avoid rate limiting
+        await Future.delayed(Duration(milliseconds: 1000));
+        
+      } catch (e) {
+        print('❌ Submit URL $submitUrl failed: $e');
+        continue;
+      }
+    }
+    
+    print('❌ All submit attempts failed for $serviceName');
+    
+    return null;
+  }
+  
+  InstagramPostData _parseStoryApiResponse(String responseBody, String originalUrl) {
+    print('🔍 Parsing story API response...');
+    
+    try {
+      final responseData = json.decode(responseBody);
+      print('✅ Response is valid JSON');
+      
+      String? mediaUrl;
+      String? thumbnailUrl;
+      bool isVideo = true;
+      
+      if (responseData is Map) {
+        if (responseData.containsKey('data')) {
+          final data = responseData['data'];
+          if (data is Map) {
+            mediaUrl = data['download_url'] ?? data['url'] ?? data['video_url'] ?? data['image_url'];
+            thumbnailUrl = data['thumbnail'] ?? data['thumb'];
+            
+            final mediaType = data['type'] ?? data['media_type'] ?? '';
+            isVideo = !mediaType.contains('image') && !mediaType.contains('photo');
+          } else if (data is List && data.isNotEmpty) {
+            final firstItem = data[0];
+            mediaUrl = firstItem['download_url'] ?? firstItem['url'] ?? firstItem['video_url'] ?? firstItem['image_url'];
+            thumbnailUrl = firstItem['thumbnail'] ?? firstItem['thumb'];
+            
+            final mediaType = firstItem['type'] ?? firstItem['media_type'] ?? '';
+            isVideo = !mediaType.contains('image') && !mediaType.contains('photo');
+          }
+        } else if (responseData.containsKey('download_url')) {
+          mediaUrl = responseData['download_url'];
+        } else if (responseData.containsKey('url')) {
+          mediaUrl = responseData['url'];
+        } else if (responseData.containsKey('video_url')) {
+          mediaUrl = responseData['video_url'];
+        } else if (responseData.containsKey('image_url')) {
+          mediaUrl = responseData['image_url'];
+          isVideo = false;
+        }
+      }
+      
+      if (mediaUrl == null || mediaUrl.isEmpty) {
+        throw Exception('No media URL found in API response');
+      }
+      
+      print('✅ Media URL extracted: ${mediaUrl.substring(0, math.min(100, mediaUrl.length))}...');
+      print('📺 Media type: ${isVideo ? "Video" : "Image"}');
+      
+      return InstagramPostData(
+        videoUrl: mediaUrl,
+        displayUrl: thumbnailUrl,
+        isVideo: isVideo,
+      );
+      
     } catch (e) {
-      if (e.toString().contains('SocketException') ||
-          e.toString().contains('Failed host lookup')) {
-        throw Exception(
-          'Cannot connect to Instagram. Please check your internet connection and try again.',
-        );
-      }
-      rethrow;
+      throw Exception('Failed to parse API response: $e');
     }
   }
 
-  /// Extract video URL from HTML using multiple strategies with content validation
-  Future<Uri> _extractVideoFromHtml(String html, String reelUrl) async {
-    // First, validate HTML content quality
-    final contentQuality = _analyzeHtmlContent(html);
-    print('\n📊 HTML CONTENT QUALITY ANALYSIS:');
-    print('   • Content size: ${html.length} characters');
-    print('   • Quality score: ${contentQuality['score']}/10');
-    print('   • Has video indicators: ${contentQuality['hasVideoIndicators']}');
-    print('   • Page completeness: ${contentQuality['pageCompleteness']}');
-
-    // If content quality is too low, throw specific error
-    if (contentQuality['score'] < 3) {
-      throw Exception(
-        'Instagram returned incomplete page content (score: ${contentQuality['score']}/10). '
-        'This typically indicates anti-bot protection is active. Try again in a few minutes.',
+  InstagramPostData _parseStoryWebResponse(String responseBody, String originalUrl) {
+    print('🔍 Parsing story response...');
+    
+    try {
+      final responseData = json.decode(responseBody);
+      print('✅ Response is valid JSON');
+      
+      String? mediaUrl;
+      String? thumbnailUrl;
+      bool isVideo = true;
+      
+      if (responseData is Map) {
+        if (responseData.containsKey('data')) {
+          final data = responseData['data'];
+          if (data is Map) {
+            mediaUrl = data['download_url'] ?? data['url'] ?? data['video_url'] ?? data['image_url'];
+            thumbnailUrl = data['thumbnail'] ?? data['thumb'];
+            
+            final mediaType = data['type'] ?? data['media_type'] ?? '';
+            if (mediaType.contains('image') || mediaType.contains('photo')) {
+              isVideo = false;
+            }
+          } else if (data is List && data.isNotEmpty) {
+            final firstItem = data[0];
+            mediaUrl = firstItem['download_url'] ?? firstItem['url'] ?? firstItem['video_url'] ?? firstItem['image_url'];
+            thumbnailUrl = firstItem['thumbnail'] ?? firstItem['thumb'];
+            
+            final mediaType = firstItem['type'] ?? firstItem['media_type'] ?? '';
+            if (mediaType.contains('image') || mediaType.contains('photo')) {
+              isVideo = false;
+            }
+          }
+        } else if (responseData.containsKey('download_url')) {
+          mediaUrl = responseData['download_url'];
+        } else if (responseData.containsKey('url')) {
+          mediaUrl = responseData['url'];
+        }
+      }
+      
+      if (mediaUrl == null || mediaUrl.isEmpty) {
+        throw Exception('No media URL found in web scraping response');
+      }
+      
+      if (mediaUrl.startsWith('/')) {
+        mediaUrl = 'https://igram.world$mediaUrl';
+      } else if (!mediaUrl.startsWith('http')) {
+        mediaUrl = 'https://igram.world/$mediaUrl';
+      }
+      
+      print('✅ Media URL extracted: ${mediaUrl.substring(0, math.min(100, mediaUrl.length))}...');
+      print('📺 Media type: ${isVideo ? "Video" : "Image"}');
+      
+      return InstagramPostData(
+        videoUrl: mediaUrl,
+        displayUrl: thumbnailUrl,
+        isVideo: isVideo,
       );
+      
+    } catch (e) {
+      return _parseStoryFromHtml(responseBody, originalUrl);
+    }
+  }
+  
+  InstagramPostData _parseStoryFromHtml(String html, String originalUrl) {
+    print('🔍 Parsing story from HTML response...');
+    print('🔍 HTML length: ${html.length} characters');
+    
+    String? mediaUrl;
+    bool isVideo = true;
+    
+    // Strategy 1: Look for Instagram CDN URLs (most reliable)
+    final instagramCdnPatterns = [
+      RegExp(r'"(https://[^"]*instagram[^"]*\.(?:mp4|jpg|jpeg|png)[^"]*?)"'),
+      RegExp(r'"(https://[^"]*fbcdn[^"]*\.(?:mp4|jpg|jpeg|png)[^"]*?)"'),
+      RegExp(r'"(https://[^"]*cdninstagram[^"]*\.(?:mp4|jpg|jpeg|png)[^"]*?)"'),
+    ];
+    
+    for (final pattern in instagramCdnPatterns) {
+      final matches = pattern.allMatches(html);
+      for (final match in matches) {
+        final url = match.group(1);
+        if (url != null && !url.contains('favicon') && !url.contains('icon') && !url.contains('logo')) {
+          mediaUrl = url;
+          isVideo = url.contains('mp4');
+          print('✅ Found Instagram CDN URL: ${url.substring(0, math.min(100, url.length))}...');
+          break;
+        }
+      }
+      if (mediaUrl != null) break;
+    }
+    
+    // Strategy 2: Look for download links or direct media links
+    if (mediaUrl == null) {
+      final downloadPatterns = [
+        RegExp(r'href="([^"]*download[^"]*\.(?:mp4|jpg|jpeg|png)[^"]*?)"'),
+        RegExp(r'href="([^"]*media[^"]*\.(?:mp4|jpg|jpeg|png)[^"]*?)"'),
+        RegExp(r'data-url="([^"]*\.(?:mp4|jpg|jpeg|png)[^"]*?)"'),
+        RegExp(r'data-src="([^"]*\.(?:mp4|jpg|jpeg|png)[^"]*?)"'),
+      ];
+      
+      for (final pattern in downloadPatterns) {
+        final match = pattern.firstMatch(html);
+        if (match != null) {
+          final url = match.group(1);
+          if (url != null && !url.contains('favicon') && !url.contains('icon')) {
+            mediaUrl = url;
+            isVideo = url.contains('mp4');
+            print('✅ Found download link: ${url.substring(0, math.min(100, url.length))}...');
+            break;
+          }
+        }
+      }
+    }
+    
+    // Strategy 3: Look for any media URL but exclude common false positives
+    if (mediaUrl == null) {
+      final genericPatterns = [
+        RegExp(r'src="([^"]*\.(?:mp4|jpg|jpeg|png)[^"]*?)"'),
+        RegExp(r'href="([^"]*\.(?:mp4|jpg|jpeg|png)[^"]*?)"'),
+      ];
+      
+      for (final pattern in genericPatterns) {
+        final matches = pattern.allMatches(html);
+        for (final match in matches) {
+          final url = match.group(1);
+          if (url != null && 
+              !url.contains('favicon') && 
+              !url.contains('icon') && 
+              !url.contains('logo') &&
+              !url.contains('sprite') &&
+              !url.contains('avatar') &&
+              url.length > 50) { // Likely a real media URL if it's long enough
+            mediaUrl = url;
+            isVideo = url.contains('mp4');
+            print('✅ Found generic media URL: ${url.substring(0, math.min(100, url.length))}...');
+            break;
+          }
+        }
+        if (mediaUrl != null) break;
+      }
+    }
+    
+    // Strategy 4: Debug - show what URLs we found
+    if (mediaUrl == null) {
+      print('🔍 DEBUG: No media URL found. Looking for any URLs...');
+      final allUrlPattern = RegExp(r'(?:src|href|data-url|data-src)="([^"]+)"');
+      final allMatches = allUrlPattern.allMatches(html);
+      var count = 0;
+      for (final match in allMatches.take(10)) {
+        final url = match.group(1);
+        print('🔍 Found URL ${++count}: $url');
+      }
+      
+      // Also look for any mp4 or image URLs
+      final mediaPattern = RegExp(r'"([^"]*\.(?:mp4|jpg|jpeg|png)[^"]*?)"');
+      final mediaMatches = mediaPattern.allMatches(html);
+      count = 0;
+      print('🔍 All media URLs found:');
+      for (final match in mediaMatches.take(5)) {
+        final url = match.group(1);
+        print('🔍 Media URL ${++count}: $url');
+      }
+    }
+    
+    if (mediaUrl == null || mediaUrl.isEmpty) {
+      print('❌ No valid media URL found in HTML response');
+      throw Exception('No valid media URL found in HTML response');
+    }
+    
+    // Convert relative URLs to absolute
+    if (mediaUrl.startsWith('/')) {
+      mediaUrl = 'https://igram.world$mediaUrl';
+    } else if (!mediaUrl.startsWith('http')) {
+      mediaUrl = 'https://igram.world/$mediaUrl';
+    }
+    
+    print('✅ Final media URL: ${mediaUrl.substring(0, math.min(100, mediaUrl.length))}...');
+    print('📺 Media type: ${isVideo ? "Video" : "Image"}');
+    
+    return InstagramPostData(
+      videoUrl: mediaUrl,
+      displayUrl: null,
+      isVideo: isVideo,
+    );
+  }
+
+  Future<Uri> _resolveDirectVideoUrl(String reelUrl) async {
+    print('🔄 Fetching reel page...');
+    
+    final userAgents = [
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Instagram 76.0.0.15.395 Android (24/7.0; 640dpi; 1440x2560; samsung; SM-G930F; herolte; samsungexynos8890; en_US)',
+    ];
+    
+    for (int i = 0; i < userAgents.length; i++) {
+      final userAgent = userAgents[i];
+      print('🔄 Trying user agent ${i + 1}/${userAgents.length}: ${userAgent.substring(0, 50)}...');
+      
+      final headers = {
+        'User-Agent': userAgent,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate',
+        'DNT': '1',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'same-origin',
+        'Cache-Control': 'no-cache',
+        'Pragma': 'no-cache',
+      };
+
+      try {
+        final response = await http.get(
+          Uri.parse(reelUrl),
+          headers: headers,
+        ).timeout(Duration(seconds: 30));
+
+        if (response.statusCode != 200) {
+          print('❌ Failed to load reel page (HTTP ${response.statusCode}) with user agent ${i + 1}');
+          continue;
+        }
+
+        final html = response.body;
+        print('✅ Page loaded successfully (${html.length} characters) with user agent ${i + 1}');
+
+        try {
+          return await _extractVideoFromHtml(html);
+        } catch (e) {
+          print('❌ Video extraction failed with user agent ${i + 1}: $e');
+          if (i < userAgents.length - 1) {
+            print('🔄 Trying next user agent...');
+            continue;
+          } else {
+            rethrow;
+          }
+        }
+      } catch (e) {
+        print('❌ Request failed with user agent ${i + 1}: $e');
+        if (i < userAgents.length - 1) {
+          continue;
+        }
+        throw Exception('Failed to fetch reel page: ${e.toString()}');
+      }
+    }
+    
+    throw Exception('All user agents failed to extract video URL');
+  }
+
+  Future<Uri> _extractVideoFromHtml(String html) async {
+    print('🔍 Extracting video URL from HTML...');
+    
+    // Strategy 1: Open Graph meta tag
+    print('Strategy 1: Trying og:video meta tag');
+    final ogVideo = _matchMeta(html, 'og:video');
+    if (ogVideo != null && ogVideo.contains('.mp4')) {
+      print('✅ Found video via og:video meta tag: ${ogVideo.substring(0, 100)}...');
+      return Uri.parse(_unescapeUrl(ogVideo));
+    } else if (ogVideo != null) {
+      print('🔍 og:video found but no .mp4: $ogVideo');
+    } else {
+      print('🔍 No og:video meta tag found');
     }
 
-    // Strategy 1: Open Graph meta tag
-    print('\n' + '-' * 30);
-    print('🔍 TRYING STRATEGY 1: Open Graph og:video meta tag');
-    print('-' * 30);
-    final ogVideo = _matchMeta(html, 'og:video');
-    if (ogVideo != null && ogVideo.endsWith('.mp4')) {
-      print('🟢 ✅ STRATEGY 1 SUCCESS!');
-      return Uri.parse(_unescapeUrl(ogVideo));
+    // Strategy 1.5: Try other meta tag variations
+    print('Strategy 1.5: Trying other video meta tags');
+    final videoTags = ['og:video:url', 'og:video:secure_url', 'twitter:player:stream', 'twitter:player'];
+    for (final tag in videoTags) {
+      final videoMeta = _matchMeta(html, tag);
+      if (videoMeta != null && videoMeta.contains('.mp4')) {
+        print('✅ Found video via $tag meta tag: ${videoMeta.substring(0, 100)}...');
+        return Uri.parse(_unescapeUrl(videoMeta));
+      } else if (videoMeta != null) {
+        print('🔍 $tag found but no .mp4: $videoMeta');
+      }
     }
 
     // Strategy 2: Secure URL variant
-    print('\n' + '-' * 30);
-    print('🔍 TRYING STRATEGY 2: Open Graph og:video:secure_url meta tag');
-    print('-' * 30);
+    print('Strategy 2: Trying og:video:secure_url meta tag');
     final ogVideoSecure = _matchMeta(html, 'og:video:secure_url');
-    if (ogVideoSecure != null && ogVideoSecure.endsWith('.mp4')) {
-      print('🟢 ✅ STRATEGY 2 SUCCESS!');
+    if (ogVideoSecure != null && ogVideoSecure.contains('.mp4')) {
+      print('✅ Found video via og:video:secure_url meta tag: ${ogVideoSecure.substring(0, 100)}...');
       return Uri.parse(_unescapeUrl(ogVideoSecure));
+    } else if (ogVideoSecure != null) {
+      print('🔍 og:video:secure_url found but no .mp4: $ogVideoSecure');
+    } else {
+      print('🔍 No og:video:secure_url meta tag found');
     }
 
     // Strategy 3: JSON video_url extraction
-    print('\n' + '-' * 30);
-    print('🔍 TRYING STRATEGY 3: JSON video_url extraction');
-    print('-' * 30);
+    print('Strategy 3: Trying JSON video_url extraction');
     final jsonUrl = _matchJsonVideoUrl(html);
     if (jsonUrl != null) {
-      print('🟢 ✅ STRATEGY 3 SUCCESS!');
+      print('✅ Found video via JSON extraction: ${jsonUrl.substring(0, 100)}...');
       return Uri.parse(_unescapeUrl(jsonUrl));
+    } else {
+      print('🔍 No JSON video_url found');
+    }
+    
+    // Strategy 4: Enhanced JSON patterns
+    print('Strategy 4: Trying enhanced JSON patterns');
+    final enhancedJsonUrl = _findEnhancedJsonUrl(html);
+    if (enhancedJsonUrl != null) {
+      print('✅ Found video via enhanced JSON: ${enhancedJsonUrl.substring(0, 100)}...');
+      return Uri.parse(_unescapeUrl(enhancedJsonUrl));
+    } else {
+      print('🔍 No enhanced JSON patterns found');
+    }
+    
+    // Strategy 5: Script tag patterns
+    print('Strategy 5: Trying script tag patterns');
+    final scriptUrl = _findVideoInScripts(html);
+    if (scriptUrl != null) {
+      print('✅ Found video in script tags: ${scriptUrl.substring(0, 100)}...');
+      return Uri.parse(_unescapeUrl(scriptUrl));
+    } else {
+      print('🔍 No video found in script tags');
+    }
+    
+    // Strategy 6: Look for any video-like URLs as last resort
+    print('Strategy 6: Looking for any video URLs as last resort');
+    final anyVideoUrl = _findAnyVideoUrl(html);
+    if (anyVideoUrl != null) {
+      print('✅ Found video URL as last resort: ${anyVideoUrl.substring(0, 100)}...');
+      return Uri.parse(_unescapeUrl(anyVideoUrl));
     }
 
-    // Strategy 4: Alternative patterns
-    print('\n' + '-' * 30);
-    print('🔍 TRYING STRATEGY 4: Alternative video URL patterns');
-    print('-' * 30);
-    final alternativeUrl = _findAlternativeVideoUrl(html);
-    if (alternativeUrl != null) {
-      print('🟢 ✅ STRATEGY 4 SUCCESS!');
-      return Uri.parse(_unescapeUrl(alternativeUrl));
+    print('❌ All strategies failed to extract video URL');
+    
+    // Debug: Let's see what meta tags are actually present
+    print('🔍 DEBUG: Analyzing available meta tags...');
+    final metaTags = RegExp(r'<meta[^>]+>', caseSensitive: false).allMatches(html);
+    var metaCount = 0;
+    for (final metaMatch in metaTags.take(10)) {
+      print('🔍 Meta tag ${++metaCount}: ${metaMatch.group(0)}');
     }
-
-    // Strategy 5: Enhanced pattern matching for newer Instagram formats
-    print('\n' + '-' * 30);
-    print('🔍 TRYING STRATEGY 5: Enhanced pattern matching');
-    print('-' * 30);
-    final enhancedUrl = _findEnhancedVideoUrl(html);
-    if (enhancedUrl != null) {
-      print('🟢 ✅ STRATEGY 5 SUCCESS!');
-      return Uri.parse(_unescapeUrl(enhancedUrl));
+    
+    // Debug: Let's look for any video-related content
+    print('🔍 DEBUG: Looking for any video-related patterns...');
+    final videoKeywords = ['video', 'mp4', 'stream', 'media'];
+    for (final keyword in videoKeywords) {
+      final keywordMatches = RegExp(keyword, caseSensitive: false).allMatches(html);
+      if (keywordMatches.isNotEmpty) {
+        print('🔍 Found ${keywordMatches.length} instances of "$keyword"');
+        final firstMatch = keywordMatches.first;
+        final start = math.max(0, firstMatch.start - 50);
+        final end = math.min(html.length, firstMatch.end + 50);
+        final context = html.substring(start, end);
+        print('🔍 Context: $context');
+      }
     }
-
-    print('\n🔴 ❌ ALL STRATEGIES FAILED');
-
-    // Provide detailed failure analysis
-    final failureAnalysis = _analyzeExtractionFailure(html);
-    print('\n🔍 FAILURE ANALYSIS:');
-    failureAnalysis.forEach((key, value) => print('   • $key: $value'));
-
-    throw Exception(
-      'Could not find a direct video URL. Failure analysis: ${failureAnalysis['summary']}',
-    );
+    
+    print('📄 HTML sample (first 500 chars): ${html.substring(0, math.min(500, html.length))}...');
+    throw Exception('Could not find video URL in Instagram page');
   }
 
-  /// Analyze HTML content quality to detect Instagram blocking
-  Map<String, dynamic> _analyzeHtmlContent(String html) {
-    int score = 0;
-    final analysis = <String, dynamic>{};
-
-    // Check for basic HTML structure
-    if (html.contains('<!DOCTYPE html>') || html.contains('<html')) score += 1;
-
-    // Check for Instagram-specific elements
-    if (html.contains('instagram.com')) score += 1;
-    if (html.contains('og:site_name')) score += 1;
-    if (html.contains('og:title')) score += 1;
-
-    // Check for video-related content
-    bool hasVideoIndicators = false;
-    if (html.contains('og:video') ||
-        html.contains('video_url') ||
-        html.contains('playback_url') ||
-        html.contains('.mp4')) {
-      score += 2;
-      hasVideoIndicators = true;
-    }
-
-    // Check for Instagram app data
-    if (html.contains('window._sharedData') ||
-        html.contains('window.__additionalDataLoaded')) {
-      score += 2;
-    }
-
-    // Check content size (smaller pages are often blocked/limited)
-    if (html.length > 500000)
-      score += 2;
-    else if (html.length > 200000)
-      score += 1;
-
-    // Check for login requirements
-    bool requiresLogin =
-        html.contains('loginForm') || html.contains('Login • Instagram');
-    if (requiresLogin) score -= 2;
-
-    // Page completeness
-    String pageCompleteness = 'Unknown';
-    if (html.length < 100000)
-      pageCompleteness = 'Minimal';
-    else if (html.length < 300000)
-      pageCompleteness = 'Partial';
-    else if (html.length < 600000)
-      pageCompleteness = 'Standard';
-    else
-      pageCompleteness = 'Full';
-
-    analysis['score'] = math.max(0, score);
-    analysis['hasVideoIndicators'] = hasVideoIndicators;
-    analysis['requiresLogin'] = requiresLogin;
-    analysis['pageCompleteness'] = pageCompleteness;
-    analysis['contentSize'] = html.length;
-
-    return analysis;
-  }
-
-  /// Enhanced video URL finding with additional patterns
-  String? _findEnhancedVideoUrl(String html) {
+  String? _matchMeta(String html, String property) {
     final patterns = [
-      // Instagram CDN patterns
-      RegExp(r'"([^"]*instagram[^"]*\.fna\.fbcdn\.net[^"]*\.mp4[^"]*?)"'),
-      RegExp(r'"([^"]*scontent[^"]*instagram[^"]*\.mp4[^"]*?)"'),
-
-      // Video manifest patterns
-      RegExp(r'"video_url"\s*:\s*"([^"]+?)"'),
-      RegExp(r'"playback_url"\s*:\s*"([^"]+?)"'),
-
-      // Data attribute patterns
-      RegExp(r'data-video-url="([^"]+?)"'),
-      RegExp(r'data-src="([^"]+?\.mp4[^"]*?)"'),
-
-      // Script tag patterns
-      RegExp(r'src:\s*"([^"]+?\.mp4[^"]*?)"'),
-      RegExp(r'url:\s*"([^"]+?\.mp4[^"]*?)"'),
+      RegExp('<meta[^>]+property="$property"[^>]+content="([^"]+)"', caseSensitive: false),
+      RegExp('<meta[^>]+content="([^"]+)"[^>]+property="$property"', caseSensitive: false),
+      RegExp("<meta[^>]+property='$property'[^>]+content='([^']+)'", caseSensitive: false),
+      RegExp("<meta[^>]+content='([^']+)'[^>]+property='$property'", caseSensitive: false),
+      RegExp('<meta[^>]+property=$property[^>]+content=([^\\s>]+)', caseSensitive: false),
+      RegExp('<meta[^>]+content=([^\\s>]+)[^>]+property=$property', caseSensitive: false),
     ];
-
+    
     for (final pattern in patterns) {
       final match = pattern.firstMatch(html);
       if (match != null) {
-        final url = match.group(1);
-        if (url != null && url.contains('.mp4') && url.startsWith('http')) {
-          print('   • Found with enhanced pattern: ${pattern.pattern}');
-          return url;
+        var content = match.group(1);
+        if (content != null && content.isNotEmpty) {
+          print('🔍 Found meta $property: ${content.substring(0, math.min(100, content.length))}...');
+          content = content
+              .replaceAll('&amp;', '&')
+              .replaceAll('&lt;', '<')
+              .replaceAll('&gt;', '>')
+              .replaceAll('&quot;', '"')
+              .replaceAll('&#39;', "'")
+              .replaceAll('&#x27;', "'");
+          return content;
         }
       }
     }
     return null;
   }
 
-  /// Analyze why extraction failed
-  Map<String, String> _analyzeExtractionFailure(String html) {
-    final analysis = <String, String>{};
-
-    if (html.length < 100000) {
-      analysis['Page Size'] =
-          'Too small (${html.length} chars) - likely blocked content';
-    } else {
-      analysis['Page Size'] = 'Normal (${html.length} chars)';
-    }
-
-    if (html.contains('Login • Instagram')) {
-      analysis['Login Required'] = 'Yes - Instagram requires authentication';
-    } else {
-      analysis['Login Required'] = 'No';
-    }
-
-    if (!html.contains('og:video') && !html.contains('video_url')) {
-      analysis['Video Metadata'] = 'Missing - no video metadata found';
-    } else {
-      analysis['Video Metadata'] = 'Present but inaccessible';
-    }
-
-    if (html.contains('private account') ||
-        html.contains('This account is private')) {
-      analysis['Account Status'] = 'Private account';
-    } else {
-      analysis['Account Status'] = 'Public account';
-    }
-
-    // Determine most likely cause
-    String summary;
-    if (html.length < 200000) {
-      summary =
-          'Instagram anti-bot protection active (lightweight page served)';
-    } else if (html.contains('Login')) {
-      summary = 'Login required for this content';
-    } else {
-      summary = 'Video metadata present but extraction patterns failed';
-    }
-
-    analysis['summary'] = summary;
-
-    return analysis;
-  }
-
-  // Helper methods for HTML parsing
-  String? _matchMeta(String html, String property) {
-    final reg = RegExp(
-      '<meta[^>]+property=["\']$property["\'][^>]+content=["\']([^"\']+)["\']',
-      caseSensitive: false,
-    );
-    final m = reg.firstMatch(html);
-    return m?.group(1);
-  }
-
   String? _matchJsonVideoUrl(String html) {
-    final reg = RegExp(
-      r'"video_url"\s*:\s*"([^"]+?\.mp4[^"]*)"',
-      multiLine: true,
-    );
-    final m = reg.firstMatch(html);
-    return m?.group(1);
-  }
-
-  String? _findAlternativeVideoUrl(String html) {
     final patterns = [
-      RegExp(r'"playback_url"\s*:\s*"([^"]+?\.mp4[^"]*)"'),
-      RegExp(r'"src"\s*:\s*"([^"]+?fbcdn[^"]*\.mp4[^"]*)"'),
-      RegExp(r'"url"\s*:\s*"([^"]+?instagram[^"]*\.mp4[^"]*)"'),
-      RegExp(r'"([^"]*scontent[^"]*\.mp4[^"]*)"'),
+      RegExp(r'"video_url":\s*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'"playback_url":\s*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'"src":\s*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'"url":\s*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'video_url":[^"]*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'playback_url":[^"]*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'"(https://[^"]*\.mp4[^"]*)"'),
     ];
 
+    for (final pattern in patterns) {
+      final matches = pattern.allMatches(html);
+      for (final match in matches) {
+        final url = match.group(1);
+        if (url != null && url.contains('.mp4')) {
+          print('🔍 Found JSON video URL: ${url.substring(0, math.min(100, url.length))}...');
+          if (url.contains('instagram') || url.contains('fbcdn') || url.contains('cdninstagram')) {
+            return url;
+          }
+        }
+      }
+    }
+    
     for (final pattern in patterns) {
       final match = pattern.firstMatch(html);
       if (match != null) {
         final url = match.group(1);
         if (url != null && url.contains('.mp4')) {
+          print('🔍 Found any JSON video URL: ${url.substring(0, math.min(100, url.length))}...');
           return url;
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  String? _findEnhancedJsonUrl(String html) {
+    final patterns = [
+      RegExp(r'"video_versions":\s*\[\s*{[^}]*"url":\s*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'"playback_url":\s*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'"video_dash_manifest"[^"]*"url":\s*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'"dash_manifest"[^"]*"video_url":\s*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'video_url":\s*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'window\._sharedData[^}]*"video_url":\s*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'"video":[^}]*"url":\s*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'"media":[^}]*"video_url":\s*"([^"]+\.mp4[^"]*)"'),
+      RegExp(r'"(https://[^"]*instagram[^"]*\.mp4[^"]*)"'),
+      RegExp(r'"(https://[^"]*fbcdn[^"]*\.mp4[^"]*)"'),
+    ];
+
+    for (final pattern in patterns) {
+      final matches = pattern.allMatches(html);
+      for (final match in matches) {
+        final url = match.group(1);
+        if (url != null && url.contains('.mp4')) {
+          print('🔍 Found enhanced JSON URL: ${url.substring(0, math.min(100, url.length))}...');
+          if (url.contains('instagram') || url.contains('fbcdn') || url.contains('cdninstagram')) {
+            return url;
+          }
         }
       }
     }
     return null;
   }
 
-  String? _extractTitle(String html) {
-    final titleRegex = RegExp(
-      r'<title[^>]*>([^<]*)</title>',
-      caseSensitive: false,
-    );
-    final match = titleRegex.firstMatch(html);
-    return match?.group(1)?.trim();
-  }
-
-  String _unescapeUrl(String s) {
-    try {
-      return json.decode('"${s.replaceAll('"', r'\"')}"') as String;
-    } catch (_) {
-      return s.replaceAll(r'\/', '/').replaceAll(r'\u0026', '&');
-    }
-  }
-
-  /// Manually clear session data (useful for troubleshooting)
-  static void clearSession() {
-    print('🗑️ Manually clearing Instagram session data...');
-    _clearSession();
-    print(
-      '✅ Session data cleared. Next request will initialize a fresh session.',
-    );
-  }
-
-  /// Get current session status for debugging
-  static Map<String, dynamic> getSessionStatus() {
-    return {
-      'hasSession': _sessionId != null,
-      'hasCSRFToken': _csrfToken != null,
-      'sessionExpiry': _sessionExpiry?.toIso8601String(),
-      'isValid': _isSessionValid(),
-      'quality': _assessSessionQuality(),
-      'cookies': {
-        'sessionid':
-            _sessionId != null
-                ? '${_sessionId!.substring(0, math.min(8, _sessionId!.length))}...'
-                : null,
-        'csrftoken':
-            _csrfToken != null
-                ? '${_csrfToken!.substring(0, math.min(8, _csrfToken!.length))}...'
-                : null,
-        'mid':
-            _mid != null
-                ? '${_mid!.substring(0, math.min(8, _mid!.length))}...'
-                : null,
-        'ig_did': _ig_did != null,
-        'ig_nrcb': _ig_nrcb != null,
-      },
-    };
-  }
-
-  /// Legacy method for backward compatibility - downloads reel and returns video URL
-  Future<String> downloadReel(
-    String postUrl, {
-    bool skipConnectivityCheck = false,
-  }) async {
-    try {
-      final postData = await getPostData(
-        postUrl,
-        skipConnectivityCheck: skipConnectivityCheck,
-      );
-
-      if (postData.videoUrl == null || postData.videoUrl!.isEmpty) {
-        throw Exception('No video URL found in post data');
+  String? _findVideoInScripts(String html) {
+    final scriptPattern = RegExp(r'<script[^>]*>([\s\S]*?)</script>', multiLine: true);
+    final scriptMatches = scriptPattern.allMatches(html);
+    
+    for (final scriptMatch in scriptMatches) {
+      final scriptContent = scriptMatch.group(1) ?? '';
+      
+      final videoPatterns = [
+        RegExp(r'"(https://[^"]*\.instagram\.com[^"]*\.mp4[^"]*)"'),
+        RegExp(r'"(https://[^"]*fbcdn\.net[^"]*\.mp4[^"]*)"'),
+        RegExp(r'"(https://[^"]*cdninstagram\.com[^"]*\.mp4[^"]*)"'),
+      ];
+      
+      for (final pattern in videoPatterns) {
+        final match = pattern.firstMatch(scriptContent);
+        if (match != null && match.group(1) != null) {
+          final url = match.group(1)!;
+          if (url.contains('.mp4') && (url.contains('instagram') || url.contains('fbcdn'))) {
+            return url;
+          }
+        }
       }
+    }
+    return null;
+  }
 
-      return postData.videoUrl!;
+  String? _findAnyVideoUrl(String html) {
+    final videoPatterns = [
+      RegExp(r'(https://[^\s\"<>]*\.mp4[^\s\"<>]*)'),
+      RegExp(r'(https://[^\s\"<>]*instagram[^\s\"<>]*\.mp4[^\s\"<>]*)'),
+      RegExp(r'(https://[^\s\"<>]*fbcdn[^\s\"<>]*\.mp4[^\s\"<>]*)'),
+      RegExp(r'(https://[^\s\"<>]*cdninstagram[^\s\"<>]*\.mp4[^\s\"<>]*)'),
+    ];
+
+    for (final pattern in videoPatterns) {
+      final matches = pattern.allMatches(html);
+      for (final match in matches) {
+        final url = match.group(1);
+        if (url != null && url.contains('.mp4')) {
+          if (url.contains('instagram') || url.contains('fbcdn') || url.contains('cdninstagram')) {
+            return url;
+          }
+        }
+      }
+    }
+    
+    for (final pattern in videoPatterns) {
+      final match = pattern.firstMatch(html);
+      if (match != null) {
+        return match.group(1);
+      }
+    }
+    
+    return null;
+  }
+
+  String _unescapeUrl(String url) {
+    return url
+        .replaceAll(r'\u0026', '&')
+        .replaceAll(r'\\', '')
+        .replaceAll(r'\/', '/')
+        .replaceAll(r'\u003D', '=')
+        .replaceAll(r'\u0025', '%');
+  }
+  
+  // Advanced background automation helper methods
+  
+  InstagramPostData? _extractMediaFromResponse(String responseData, String originalUrl) {
+    // Try multiple extraction strategies
+    
+    // Strategy 1: Look for Instagram CDN URLs
+    final cdnPatterns = [
+      RegExp(r'"(https://[^"]*(?:instagram|fbcdn|cdninstagram)[^"]*\.(?:mp4|jpg|jpeg|png)[^"]*?)"'),
+      RegExp(r'src=["\x27](https://[^"\x27]*(?:instagram|fbcdn)[^"\x27]*\.(?:mp4|jpg|jpeg|png)[^"\x27]*?)["\x27]'),
+      RegExp(r'href=["\x27](https://[^"\x27]*(?:instagram|fbcdn)[^"\x27]*\.(?:mp4|jpg|jpeg|png)[^"\x27]*?)["\x27]'),
+    ];
+    
+    for (final pattern in cdnPatterns) {
+      final matches = pattern.allMatches(responseData);
+      for (final match in matches) {
+        final url = match.group(1)!;
+        if (_isValidMediaUrl(url)) {
+          print('✅ Found Instagram CDN URL: ${url.substring(0, math.min(80, url.length))}...');
+          return InstagramPostData(
+            videoUrl: url,
+            displayUrl: null,
+            isVideo: url.contains('.mp4'),
+          );
+        }
+      }
+    }
+    
+    // Strategy 2: Look for download links
+    final downloadPatterns = [
+      RegExp(r'download[^>]*href=["\x27]([^"\x27]+\.(?:mp4|jpg|jpeg|png)[^"\x27]*?)["\x27]'),
+      RegExp(r'data-download-url=["\x27]([^"\x27]+\.(?:mp4|jpg|jpeg|png)[^"\x27]*?)["\x27]'),
+      RegExp(r'"download_url"\s*:\s*"([^"]+\.(?:mp4|jpg|jpeg|png)[^"]*?)"'),
+    ];
+    
+    for (final pattern in downloadPatterns) {
+      final match = pattern.firstMatch(responseData);
+      if (match != null) {
+        final url = match.group(1)!;
+        if (_isValidMediaUrl(url)) {
+          print('✅ Found download URL: ${url.substring(0, math.min(80, url.length))}...');
+          return InstagramPostData(
+            videoUrl: url,
+            displayUrl: null,
+            isVideo: url.contains('.mp4'),
+          );
+        }
+      }
+    }
+    
+    // Strategy 3: Look for JavaScript variables
+    final jsPatterns = [
+      RegExp(r'var\s+(?:mediaUrl|downloadUrl|videoUrl)\s*=\s*["\x27]([^"\x27]+\.(?:mp4|jpg|jpeg|png)[^"\x27]*?)["\x27]'),
+      RegExp(r'window\.(?:mediaUrl|downloadUrl)\s*=\s*["\x27]([^"\x27]+\.(?:mp4|jpg|jpeg|png)[^"\x27]*?)["\x27]'),
+    ];
+    
+    for (final pattern in jsPatterns) {
+      final match = pattern.firstMatch(responseData);
+      if (match != null) {
+        final url = match.group(1)!;
+        if (_isValidMediaUrl(url)) {
+          print('✅ Found JS media URL: ${url.substring(0, math.min(80, url.length))}...');
+          return InstagramPostData(
+            videoUrl: url,
+            displayUrl: null,
+            isVideo: url.contains('.mp4'),
+          );
+        }
+      }
+    }
+    
+    print('⚠️ No valid media URL found in response (${responseData.length} chars)');
+    return null;
+  }
+  
+  bool _isValidMediaUrl(String url) {
+    // Comprehensive validation for media URLs
+    if (url.isEmpty || url.length < 20) return false;
+    
+    // Must be HTTPS
+    if (!url.startsWith('https://')) return false;
+    
+    // Must contain media file extension
+    if (!RegExp(r'\.(mp4|jpg|jpeg|png)(\?|$|#)').hasMatch(url)) return false;
+    
+    // Must not be favicon, icon, logo, etc.
+    final excludePatterns = [
+      'favicon', 'icon', 'logo', 'sprite', 'avatar', 'profile',
+      'thumb_', 'placeholder', 'loading', 'error', 'default'
+    ];
+    
+    for (final pattern in excludePatterns) {
+      if (url.toLowerCase().contains(pattern)) return false;
+    }
+    
+    // Prefer Instagram CDN URLs
+    final preferredDomains = ['instagram.com', 'fbcdn.net', 'cdninstagram.com'];
+    for (final domain in preferredDomains) {
+      if (url.contains(domain)) return true;
+    }
+    
+    // Allow other domains if URL is long enough (likely actual content)
+    return url.length > 60;
+  }
+  
+  // Missing automation helper methods
+  
+  Future<String?> _loadPageWithSession(String url, Map<String, String> headers) async {
+    try {
+      final response = await http.get(Uri.parse(url), headers: headers);
+      if (response.statusCode == 200) {
+        return _safeDecodeResponse(response);
+      }
     } catch (e) {
-      // Enhanced error handling for legacy method
-      if (e.toString().contains('rate limiting') ||
-          e.toString().contains('429')) {
-        throw Exception(
-          'Instagram is temporarily blocking requests due to rate limiting. '
-          'Please wait 10-15 minutes before trying again.',
-        );
-      }
-
-      if (e.toString().contains('Could not find a direct video URL')) {
-        throw Exception(
-          'Could not extract video URL from Instagram. '
-          'This may be due to the reel being private, age-restricted, or '
-          'Instagram has changed their page structure.',
-        );
-      }
-
-      // Re-throw with enhanced context
-      throw Exception(
-        'Failed to download reel. '
-        'Error: ${e.toString()}',
-      );
+      print('⚠️ Failed to load page with session: $e');
+    }
+    return null;
+  }
+  
+  Map<String, String>? _extractAndProcessFormElements(String? pageHtml, String storyUrl) {
+    if (pageHtml == null) return null;
+    
+    try {
+      final formData = _analyzeFormAdvanced(pageHtml);
+      formData['url'] = storyUrl;
+      formData['instagram_url'] = storyUrl;
+      formData['link'] = storyUrl;
+      return formData;
+    } catch (e) {
+      print('⚠️ Failed to extract form elements: $e');
+      return null;
     }
   }
-
-  /// Test method to verify improvements
-  static Future<void> testReliabilityImprovements(String testUrl) async {
-    print('\n' + '=' * 70);
-    print('🧪 TESTING RELIABILITY IMPROVEMENTS');
-    print('=' * 70);
-
-    // Test user agent selection
-    print('\n1. 🎯 TESTING USER AGENT SELECTION:');
-    for (int i = 0; i < 3; i++) {
-      final ua = _selectOptimalUserAgent();
-      print('   Selection $i: ${ua.substring(0, math.min(60, ua.length))}...');
-    }
-
-    // Test session management
-    print('\n2. 🔐 TESTING SESSION MANAGEMENT:');
-    final sessionStatus = getSessionStatus();
-    print('   Session Valid: ${sessionStatus['isValid']}');
-    print('   Session Quality: ${sessionStatus['quality']}');
-    print('   Has CSRF Token: ${sessionStatus['hasCSRFToken']}');
-
-    // Test enhanced extraction
-    print('\n3. 🔍 TESTING ENHANCED EXTRACTION:');
+  
+  Future<String?> _simulateUserInteraction(String url, Map<String, String>? formData, Map<String, String> headers) async {
+    if (formData == null) return null;
+    
     try {
-      final service = InstagramService();
-      print('   Testing with URL: $testUrl');
-      final result = await service.getPostData(testUrl);
-      print('   ✅ SUCCESS: Extracted video URL');
-      print(
-        '   Video URL: ${result.videoUrl?.substring(0, math.min(100, result.videoUrl!.length))}...',
-      );
+      // Simulate typing delay
+      await Future.delayed(Duration(milliseconds: 800 + _random.nextInt(1200)));
+      
+      final formBody = formData.entries
+          .map((e) => '${Uri.encodeComponent(e.key)}=${Uri.encodeComponent(e.value)}')
+          .join('&');
+      
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          ...headers,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: formBody,
+      ).timeout(Duration(seconds: 25));
+      
+      if (response.statusCode == 200) {
+        return _safeDecodeResponse(response);
+      }
     } catch (e) {
-      print('   ❌ FAILED: $e');
+      print('⚠️ Failed to simulate user interaction: $e');
     }
-
-    print('\n' + '=' * 70);
+    
+    return null;
+  }
+  
+  InstagramPostData? _extractMediaUrlsAdvanced(String? responseData) {
+    if (responseData == null) return null;
+    
+    try {
+      return _extractMediaFromResponse(responseData, '');
+    } catch (e) {
+      print('⚠️ Failed to extract media URLs: $e');
+      return null;
+    }
   }
 }

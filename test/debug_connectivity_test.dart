@@ -18,24 +18,23 @@ void main() async {
   
   try {
     // First try with connectivity check
-    print('📝 Attempt 1: With connectivity check');
-    final result1 = await service.getPostData(testUrl);
-    print('✅ SUCCESS: With connectivity check worked!');
+    print('📝 Attempt 1: Using optimized method');
+    final result1 = await service.getPostDataOptimized(testUrl);
+    print('✅ SUCCESS: Optimized method worked!');
     print('   Video URL: ${result1.videoUrl}');
   } catch (e) {
-    print('❌ FAILED: With connectivity check');
+    print('❌ FAILED: Optimized method');
     print('   Error: $e');
     
-    // Try without connectivity check
-    print('\n📝 Attempt 2: Skipping connectivity check');
+    // Try direct method
+    print('\n📝 Attempt 2: Direct method test');
     try {
-      final result2 = await service.getPostData(testUrl, skipConnectivityCheck: true);
-      print('✅ SUCCESS: Without connectivity check worked!');
+      final result2 = await service.getPostDataOptimized(testUrl);
+      print('✅ SUCCESS: Direct method worked!');
       print('   Video URL: ${result2.videoUrl}');
-      print('\n💡 SOLUTION: The connectivity check is the issue');
-      print('   You can use skipConnectivityCheck: true as a workaround');
+      print('\n💡 SOLUTION: The optimized method works');
     } catch (e2) {
-      print('❌ FAILED: Even without connectivity check');
+      print('❌ FAILED: All methods failed');
       print('   Error: $e2');
       
       if (diagnostics['summary']['dns_success'] == true && 

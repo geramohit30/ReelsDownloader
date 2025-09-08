@@ -14,6 +14,8 @@ class DownloadsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final provider = context.watch<DownloadProvider>();
     final items = provider.items;
+    final stories = provider.stories;
+    final allContent = [...stories, ...items]; // Combine stories and reels
     final theme = Theme.of(context);
 
     return Scaffold(
@@ -31,12 +33,12 @@ class DownloadsScreen extends StatelessWidget {
         child: SafeArea(
           child: Column(
             children: [
-              _buildHeader(theme, items.length, context),
+              _buildHeader(theme, allContent.length, context),
               Expanded(
                 child:
-                    items.isEmpty
+                    allContent.isEmpty
                         ? _buildEmptyState(theme, context)
-                        : _buildDownloadGrid(items, theme, context),
+                        : _buildDownloadGrid(allContent, theme, context),
               ),
             ],
           ),
@@ -75,7 +77,7 @@ class DownloadsScreen extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '$itemCount ${itemCount == 1 ? 'video' : 'videos'} saved',
+                  '$itemCount ${itemCount == 1 ? 'item' : 'items'} saved',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurface.withOpacity(0.7),
                   ),
@@ -125,7 +127,7 @@ class DownloadsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Downloaded Instagram Reels will appear here.\nGo to Home tab to start downloading!',
+              'Downloaded Instagram Reels & Stories will appear here.\nGo to Home tab to start downloading!',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyLarge?.copyWith(
                 color: theme.colorScheme.onSurface.withOpacity(0.7),
@@ -222,6 +224,7 @@ class DownloadsScreen extends StatelessWidget {
   Widget _buildVideoCard(dynamic item, ThemeData theme, BuildContext context) {
     final hasThumb =
         item.thumbnailPath != null && File(item.thumbnailPath!).existsSync();
+    final isStory = item.runtimeType.toString().contains('Story');
 
     return Card(
       elevation: 8,
@@ -247,26 +250,31 @@ class DownloadsScreen extends StatelessWidget {
           child: InkWell(
             onTap: () {
               HapticFeedback.lightImpact();
-              Navigator.of(context).push(
-                PageRouteBuilder(
-                  pageBuilder:
-                      (context, animation, secondaryAnimation) =>
-                          PlayerScreen(itemId: item.id),
-                  transitionsBuilder: (
-                    context,
-                    animation,
-                    secondaryAnimation,
-                    child,
-                  ) {
-                    return SlideTransition(
-                      position: animation.drive(
-                        Tween(begin: const Offset(1.0, 0.0), end: Offset.zero),
-                      ),
-                      child: child,
-                    );
-                  },
-                ),
-              );
+              if (isStory) {
+                // For stories, show the media directly since PlayerScreen is for reels
+                _showStoryDialog(context, item, theme);
+              } else {
+                Navigator.of(context).push(
+                  PageRouteBuilder(
+                    pageBuilder:
+                        (context, animation, secondaryAnimation) =>
+                            PlayerScreen(itemId: item.id),
+                    transitionsBuilder: (
+                      context,
+                      animation,
+                      secondaryAnimation,
+                      child,
+                    ) {
+                      return SlideTransition(
+                        position: animation.drive(
+                          Tween(begin: const Offset(1.0, 0.0), end: Offset.zero),
+                        ),
+                        child: child,
+                      );
+                    },
+                  ),
+                );
+              }
             },
             borderRadius: BorderRadius.circular(20),
             child: Stack(
@@ -344,27 +352,56 @@ class DownloadsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                // Content type badge
+                Positioned(
+                  top: 12,
+                  left: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isStory ? Colors.purple : Colors.blue,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      isStory ? 'STORY' : 'REEL',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ),
+                ),
                 // Action buttons
                 Positioned(
                   top: 12,
                   right: 12,
-                  child: _buildActionButton(
-                    icon: Icons.share_rounded,
-                    onPressed: () async {
-                      HapticFeedback.lightImpact();
-                      await Share.shareXFiles([XFile(item.filePath)]);
-                    },
-                    theme: theme,
-                  ),
-                ),
-                Positioned(
-                  top: 12,
-                  left: 12,
-                  child: _buildActionButton(
-                    icon: Icons.delete_rounded,
-                    onPressed: () => _showDeleteDialog(context, item, theme),
-                    theme: theme,
-                    isDestructive: true,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildActionButton(
+                        icon: Icons.share_rounded,
+                        onPressed: () async {
+                          HapticFeedback.lightImpact();
+                          await Share.shareXFiles([XFile(item.filePath)]);
+                        },
+                        theme: theme,
+                      ),
+                      const SizedBox(width: 8),
+                      _buildActionButton(
+                        icon: Icons.delete_rounded,
+                        onPressed: () => _showDeleteDialog(context, item, theme),
+                        theme: theme,
+                        isDestructive: true,
+                      ),
+                    ],
                   ),
                 ),
                 // Date info
@@ -461,6 +498,8 @@ class DownloadsScreen extends StatelessWidget {
   }
 
   void _showDeleteDialog(BuildContext context, dynamic item, ThemeData theme) {
+    final isStory = item.runtimeType.toString().contains('Story');
+    
     showDialog(
       context: context,
       builder:
@@ -472,11 +511,11 @@ class DownloadsScreen extends StatelessWidget {
               children: [
                 Icon(Icons.delete_rounded, color: Colors.red),
                 const SizedBox(width: 12),
-                const Text('Delete Video'),
+                Text('Delete ${isStory ? 'Story' : 'Video'}'),
               ],
             ),
-            content: const Text(
-              'Are you sure you want to delete this video? This action cannot be undone.',
+            content: Text(
+              'Are you sure you want to delete this ${isStory ? 'story' : 'video'}? This action cannot be undone.',
             ),
             actions: [
               TextButton(
@@ -491,11 +530,15 @@ class DownloadsScreen extends StatelessWidget {
                 child: TextButton(
                   onPressed: () async {
                     Navigator.pop(ctx);
-                    await context.read<DownloadProvider>().deleteItem(item.id);
+                    if (isStory) {
+                      await context.read<DownloadProvider>().deleteStory(item.id);
+                    } else {
+                      await context.read<DownloadProvider>().deleteItem(item.id);
+                    }
                     HapticFeedback.lightImpact();
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Video deleted')),
+                        SnackBar(content: Text('${isStory ? 'Story' : 'Video'} deleted')),
                       );
                     }
                   },
@@ -507,6 +550,157 @@ class DownloadsScreen extends StatelessWidget {
               ),
             ],
           ),
+    );
+  }
+
+  void _showStoryDialog(BuildContext context, dynamic story, ThemeData theme) {
+    showDialog(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        child: Container(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.8,
+            maxWidth: MediaQuery.of(context).size.width * 0.9,
+          ),
+          child: Stack(
+            children: [
+              // Story content
+              Positioned.fill(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: story.isVideo
+                      ? Container(
+                          color: Colors.black,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.play_circle_outline,
+                                  size: 64,
+                                  color: Colors.white,
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'Video Story',
+                                  style: theme.textTheme.titleLarge?.copyWith(
+                                    color: Colors.white,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Tap to open in external player',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: Colors.white70,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                      : story.thumbnailPath != null && File(story.thumbnailPath!).existsSync()
+                          ? Image.file(
+                              File(story.thumbnailPath!),
+                              fit: BoxFit.contain,
+                            )
+                          : story.filePath != null && File(story.filePath).existsSync()
+                              ? Image.file(
+                                  File(story.filePath),
+                                  fit: BoxFit.contain,
+                                )
+                              : Container(
+                                  color: Colors.grey[800],
+                                  child: Center(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.image_outlined,
+                                          size: 64,
+                                          color: Colors.white70,
+                                        ),
+                                        const SizedBox(height: 16),
+                                        Text(
+                                          'Story Image',
+                                          style: theme.textTheme.titleLarge?.copyWith(
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                ),
+              ),
+              // Close button
+              Positioned(
+                top: 16,
+                right: 16,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black54,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: IconButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    icon: const Icon(
+                      Icons.close,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              // Action buttons
+              Positioned(
+                bottom: 16,
+                left: 16,
+                right: 16,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    if (story.isVideo)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: TextButton.icon(
+                          onPressed: () async {
+                            Navigator.pop(ctx);
+                            // Open video in external player
+                            await Share.shareXFiles([XFile(story.filePath)]);
+                          },
+                          icon: const Icon(Icons.play_arrow, color: Colors.white),
+                          label: const Text(
+                            'Play',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ),
+                      ),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.blue,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: TextButton.icon(
+                        onPressed: () async {
+                          await Share.shareXFiles([XFile(story.filePath)]);
+                        },
+                        icon: const Icon(Icons.share, color: Colors.white),
+                        label: const Text(
+                          'Share',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 

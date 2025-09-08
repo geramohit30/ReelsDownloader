@@ -37,6 +37,7 @@ dependencies:
   share_plus: ^10.1.1
   shared_preferences: ^2.3.2
   video_thumbnail: ^0.5.3
+  webview_flutter: ^4.4.4
   # UI Enhancement packages
   animations: ^2.0.11
   google_fonts: ^6.2.1

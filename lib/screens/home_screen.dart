@@ -23,10 +23,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String? _validateUrl(String? v) {
-    if (v == null || v.trim().isEmpty) return 'Paste a reel URL';
+    if (v == null || v.trim().isEmpty) return 'Paste a reel or story URL';
     final s = v.trim();
     if (!InstagramUtils.isInstagramUrl(s)) {
-      return 'Please enter a valid Instagram reel URL';
+      return 'Please enter a valid Instagram reel or story URL';
     }
     return null;
   }
@@ -37,7 +37,8 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     try {
-      await provider.downloadReel(input);
+      // Use background automation for all downloads (reels and stories)
+      await provider.downloadFromUrl(input);
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -183,7 +184,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Insta Reel Downloader',
+                      'Insta Content Downloader',
                       style: theme.textTheme.headlineSmall?.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -191,7 +192,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Download Instagram Reels effortlessly',
+                      'Download Instagram Reels & Stories effortlessly',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: Colors.white.withOpacity(0.9),
                       ),
@@ -225,7 +226,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  'Paste Instagram Reel URL',
+                  'Paste Instagram Content URL',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: theme.colorScheme.primary,
@@ -238,7 +239,7 @@ class _HomeScreenState extends State<HomeScreen> {
               controller: _ctrl,
               enabled: !isBusy,
               decoration: InputDecoration(
-                hintText: 'https://www.instagram.com/reel/...',
+                hintText: 'https://www.instagram.com/reel/... or /stories/...',
                 hintStyle: TextStyle(
                   color: theme.colorScheme.onSurface.withOpacity(0.4),
                 ),
@@ -342,7 +343,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 const SizedBox(width: 12),
                 Text(
-                  isBusy ? 'Processing...' : 'Download Reel',
+                  isBusy ? 'Processing...' : 'Download Content',
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
