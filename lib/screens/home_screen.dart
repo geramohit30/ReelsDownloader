@@ -29,7 +29,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (v == null || v.trim().isEmpty) return 'Paste a reel URL';
     final s = v.trim();
     if (!InstagramUtils.isInstagramUrl(s)) {
-      return 'Please enter a valid Instagram reel URL';
+      return 'Please enter a valid Instagram reel or story URL';
     }
     return null;
   }
@@ -243,7 +243,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  'Paste Instagram Reel URL',
+                  'Paste Instagram Reel or Story URL',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                     color: theme.colorScheme.primary,
@@ -256,7 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
               controller: _ctrl,
               enabled: !isBusy,
               decoration: InputDecoration(
-                hintText: 'https://www.instagram.com/reel/...',
+                hintText: 'https://www.instagram.com/reel/... or /stories/...',
                 hintStyle: TextStyle(
                   color: theme.colorScheme.onSurface.withOpacity(0.4),
                 ),
@@ -293,7 +293,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Paste a public Instagram Reel link for personal/testing use.',
+              'Paste a public Instagram Reel or Story link for personal/testing use.',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurface.withOpacity(0.6),
               ),

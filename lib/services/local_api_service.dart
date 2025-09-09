@@ -118,13 +118,16 @@ class LocalApiService {
       print('   • JSON keys: ${jsonData.keys.toList()}');
 
       // Extract media information from the response
-      // Adjust these field names based on your API response structure
+      // Extract media information from the response
+      // Support your API format with downloadUrl field
       final mediaUrl =
+          jsonData['downloadUrl'] as String? ??
           jsonData['media_url'] as String? ??
           jsonData['video_url'] as String? ??
           jsonData['url'] as String?;
 
       final thumbnailUrl =
+          jsonData['thumbnailUrl'] as String? ??
           jsonData['thumbnail_url'] as String? ??
           jsonData['thumbnail'] as String? ??
           jsonData['poster'] as String?;
@@ -159,14 +162,16 @@ class LocalApiService {
       print('   • Author: $author');
       print('   • Duration: ${duration}s');
 
+      final apiOriginalUrl = jsonData['originalUrl'] as String? ?? originalUrl;
+
       return InstagramReelData(
-        id: _extractReelId(originalUrl),
+        id: _extractReelId(apiOriginalUrl),
         mediaUrl: mediaUrl,
         thumbnailUrl: thumbnailUrl,
         title: title,
         author: author,
         duration: duration,
-        originalUrl: originalUrl,
+        originalUrl: apiOriginalUrl,
       );
     } catch (e) {
       print('❌ ERROR PARSING SUCCESS RESPONSE: $e');
@@ -231,18 +236,20 @@ class LocalApiService {
     }
   }
 
-  /// Validate Instagram URL format
+  /// Validate Instagram URL format (supports reels, posts, TV, and stories)
   static bool _isValidInstagramUrl(String url) {
     final instagramUrlPattern = RegExp(
-      r'^https?://(www\.)?instagram\.com/(reel|p|tv)/[A-Za-z0-9_-]+/?(\?.*)?$',
+      r'^https?://(www\.)?instagram\.com/(reel|p|tv|stories)/[A-Za-z0-9_-]+/?(/[A-Za-z0-9_-]+)?/?(\?.*)?$',
       caseSensitive: false,
     );
     return instagramUrlPattern.hasMatch(url);
   }
 
-  /// Extract reel ID from Instagram URL
+  /// Extract reel/story ID from Instagram URL
   static String _extractReelId(String url) {
-    final match = RegExp(r'/(reel|p|tv)/([A-Za-z0-9_-]+)').firstMatch(url);
+    final match = RegExp(
+      r'/(reel|p|tv|stories)/([A-Za-z0-9_-]+)',
+    ).firstMatch(url);
     return match?.group(2) ?? DateTime.now().millisecondsSinceEpoch.toString();
   }
 
@@ -304,15 +311,15 @@ class LocalApiException implements Exception {
       case LocalApiErrorType.timeout:
         return 'The request timed out. The local API server may be slow or unresponsive.';
       case LocalApiErrorType.invalidUrl:
-        return 'Please provide a valid Instagram reel URL.';
+        return 'Please provide a valid Instagram reel or story URL.';
       case LocalApiErrorType.noMediaFound:
-        return 'No media content was found for this Instagram reel.';
+        return 'No media content was found for this Instagram reel or story.';
       case LocalApiErrorType.rateLimited:
         return 'Too many requests. Please wait a moment and try again.';
       case LocalApiErrorType.serverError:
         return 'The local API server encountered an error. Please check the server logs.';
       case LocalApiErrorType.badRequest:
-        return 'Invalid request. Please check the Instagram URL format.';
+        return 'Invalid request. Please check the Instagram URL format (supports reels and stories).';
       case LocalApiErrorType.unauthorized:
         return 'Authentication required for the local API server.';
       case LocalApiErrorType.forbidden:

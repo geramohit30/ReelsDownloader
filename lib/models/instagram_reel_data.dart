@@ -26,11 +26,13 @@ class InstagramReelData {
     return InstagramReelData(
       id: json['id'] as String? ?? _extractReelId(originalUrl),
       mediaUrl:
+          json['downloadUrl'] as String? ??
           json['media_url'] as String? ??
           json['video_url'] as String? ??
           json['url'] as String? ??
           '',
       thumbnailUrl:
+          json['thumbnailUrl'] as String? ??
           json['thumbnail_url'] as String? ??
           json['thumbnail'] as String? ??
           json['poster'] as String?,
@@ -44,7 +46,7 @@ class InstagramReelData {
           json['user'] as String? ??
           'Unknown',
       duration: json['duration'] as int? ?? 0,
-      originalUrl: originalUrl,
+      originalUrl: json['originalUrl'] as String? ?? originalUrl,
     );
   }
 

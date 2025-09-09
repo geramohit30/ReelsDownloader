@@ -108,10 +108,13 @@ void main() {
       print('}');
       print('');
       print('Alternative field names that are also supported:');
-      print('- "video_url" instead of "media_url"');
-      print('- "thumbnail" instead of "thumbnail_url"');
-      print('- "caption" instead of "title"');
-      print('- "username" or "user" instead of "author"');
+      print('- "media_url", "video_url", or "url" instead of "downloadUrl"');
+      print(
+        '- "thumbnail_url", "thumbnail", or "poster" instead of "thumbnailUrl"',
+      );
+      print('- "title" or "caption" for reel title');
+      print('- "author", "username", or "user" for author name');
+      print('- "duration" for video duration in seconds');
     });
   });
 }

@@ -1,12 +1,12 @@
-# Local API Integration Guide
+# Local API Integration Guide - Instagram Reels & Stories
 
-This guide explains how to use the Instagram Reel Downloader app with your local API server.
+This guide explains how to use the Instagram Reel Downloader app with your local API server for downloading both **Instagram Reels and Stories**.
 
 ## Overview
 
-The app now supports two modes for fetching Instagram reel data:
+The app now supports two modes for fetching Instagram reel and story data:
 1. **Instagram Direct**: Fetches data directly from Instagram (existing functionality)
-2. **Local API Server**: Uses your localhost:3000 API endpoint (new functionality)
+2. **Local API Server**: Uses your localhost:3000 API endpoint for both reels and stories (new functionality)
 
 ## Your cURL Command Implementation
 
@@ -35,19 +35,24 @@ Has been implemented in the `LocalApiService` class with the following features:
 2. **Request Format**: Exactly matches your cURL command structure
 3. **Error Handling**: Comprehensive error handling with user-friendly messages
 4. **Connection Testing**: Tests server availability before making requests
+5. **Multi-Content Support**: Supports both Instagram Reels and Stories
+
+## Supported Instagram Content Types
+
+✅ **Instagram Reels** - `https://www.instagram.com/reel/ABC123/`  
+✅ **Instagram Stories** - `https://www.instagram.com/stories/username/123456789/`  
+✅ **Instagram Posts** - `https://www.instagram.com/p/ABC123/`  
+✅ **Instagram TV** - `https://www.instagram.com/tv/ABC123/`
 
 ## API Response Format
 
-Your localhost:3000 endpoint should return JSON in this format:
+Your localhost:3000 endpoint returns JSON in this format:
 
 ```json
 {
-  "id": "reel_id_or_shortcode",
-  "media_url": "https://scontent.cdninstagram.com/video.mp4",
-  "thumbnail_url": "https://scontent.cdninstagram.com/image.jpg",
-  "title": "Reel title or caption",
-  "author": "username", 
-  "duration": 30
+  "originalUrl": "https://www.instagram.com/reel/DKG8krgseWt/",
+  "downloadUrl": "https://media.igram.world/get?__sig=ghnD9-fzlabaek8mu19eCA&__expires=1757331133&uri=https%3A%2F%2Fscontent-lga3-1.cdninstagram.com%2Fo1%2Fv%2Ft2%2Ff2%2Fm86%2FAQOZDE39GlJXwuxn06WFfh9oogXwMHWYWeVS4RY3wOl9rrMQJIta919ILLXfBL18kxV8H1M7THwJL7tOsOmAaFejLtzmtyv-9o920aw.mp4...",
+  "thumbnailUrl": "https://scontent.cdninstagram.com/image.jpg" // optional
 }
 ```
 
@@ -55,11 +60,18 @@ Your localhost:3000 endpoint should return JSON in this format:
 
 ```json
 {
-  "video_url": "...",     // instead of "media_url"
-  "thumbnail": "...",     // instead of "thumbnail_url"
+  "media_url": "...",     // instead of "downloadUrl"
+  "video_url": "...",     // instead of "downloadUrl"
+  "url": "...",          // instead of "downloadUrl"
+  "thumbnail_url": "...", // instead of "thumbnailUrl"
+  "thumbnail": "...",     // instead of "thumbnailUrl"
+  "poster": "...",        // instead of "thumbnailUrl"
+  "title": "...",         // reel title or caption
   "caption": "...",       // instead of "title"
+  "author": "...",        // author username
   "username": "...",      // instead of "author"
-  "user": "..."          // instead of "author"
+  "user": "...",          // instead of "author"
+  "duration": 30          // video duration in seconds
 }
 ```
 
