@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -6,6 +7,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import '../providers/download_provider.dart';
 import 'player_screen.dart';
+import 'image_viewer_screen.dart';
 
 class DownloadsScreen extends StatelessWidget {
   const DownloadsScreen({super.key});
@@ -57,7 +59,7 @@ class DownloadsScreen extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              Icons.video_library_rounded,
+              Icons.download_rounded,
               color: theme.colorScheme.primary,
               size: 28,
             ),
@@ -75,7 +77,7 @@ class DownloadsScreen extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '$itemCount ${itemCount == 1 ? 'video' : 'videos'} saved',
+                  '$itemCount ${itemCount == 1 ? 'item' : 'items'} saved',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurface.withOpacity(0.7),
                   ),
@@ -125,7 +127,7 @@ class DownloadsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              'Downloaded Instagram Reels will appear here.\nGo to Home tab to start downloading!',
+              'Downloaded Instagram content will appear here.\nGo to Home tab to start downloading!',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyLarge?.copyWith(
                 color: theme.colorScheme.onSurface.withOpacity(0.7),
@@ -222,6 +224,11 @@ class DownloadsScreen extends StatelessWidget {
   Widget _buildVideoCard(dynamic item, ThemeData theme, BuildContext context) {
     final hasThumb =
         item.thumbnailPath != null && File(item.thumbnailPath!).existsSync();
+    
+    // Detect content type from file extension
+    final isImage = item.filePath.toLowerCase().endsWith('.jpg') || 
+                   item.filePath.toLowerCase().endsWith('.jpeg');
+    final contentType = isImage ? 'Story' : 'Reel';
 
     return Card(
       elevation: 8,
@@ -247,26 +254,51 @@ class DownloadsScreen extends StatelessWidget {
           child: InkWell(
             onTap: () {
               HapticFeedback.lightImpact();
-              Navigator.of(context).push(
-                PageRouteBuilder(
-                  pageBuilder:
-                      (context, animation, secondaryAnimation) =>
-                          PlayerScreen(itemId: item.id),
-                  transitionsBuilder: (
-                    context,
-                    animation,
-                    secondaryAnimation,
-                    child,
-                  ) {
-                    return SlideTransition(
-                      position: animation.drive(
-                        Tween(begin: const Offset(1.0, 0.0), end: Offset.zero),
-                      ),
-                      child: child,
-                    );
-                  },
-                ),
-              );
+              
+              // Navigate to appropriate viewer based on content type
+              if (isImage) {
+                Navigator.of(context).push(
+                  PageRouteBuilder(
+                    pageBuilder:
+                        (context, animation, secondaryAnimation) =>
+                            ImageViewerScreen(itemId: item.id),
+                    transitionsBuilder: (
+                      context,
+                      animation,
+                      secondaryAnimation,
+                      child,
+                    ) {
+                      return SlideTransition(
+                        position: animation.drive(
+                          Tween(begin: const Offset(1.0, 0.0), end: Offset.zero),
+                        ),
+                        child: child,
+                      );
+                    },
+                  ),
+                );
+              } else {
+                Navigator.of(context).push(
+                  PageRouteBuilder(
+                    pageBuilder:
+                        (context, animation, secondaryAnimation) =>
+                            PlayerScreen(itemId: item.id),
+                    transitionsBuilder: (
+                      context,
+                      animation,
+                      secondaryAnimation,
+                      child,
+                    ) {
+                      return SlideTransition(
+                        position: animation.drive(
+                          Tween(begin: const Offset(1.0, 0.0), end: Offset.zero),
+                        ),
+                        child: child,
+                      );
+                    },
+                  ),
+                );
+              }
             },
             borderRadius: BorderRadius.circular(20),
             child: Stack(
@@ -296,7 +328,7 @@ class DownloadsScreen extends StatelessWidget {
                               ),
                               child: Center(
                                 child: Icon(
-                                  Icons.movie_rounded,
+                                  isImage ? Icons.image_rounded : Icons.movie_rounded,
                                   size: 48,
                                   color: Colors.white.withOpacity(0.8),
                                 ),
@@ -320,7 +352,38 @@ class DownloadsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-                // Play button
+                // Content type indicator
+                Positioned(
+                  top: 12,
+                  left: 12,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: isImage ? Colors.orange.withOpacity(0.9) : Colors.blue.withOpacity(0.9),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          isImage ? Icons.image_rounded : Icons.video_library_rounded,
+                          size: 14,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          contentType,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                // Play/View button
                 Positioned.fill(
                   child: Center(
                     child: Container(
@@ -337,7 +400,7 @@ class DownloadsScreen extends StatelessWidget {
                         ],
                       ),
                       child: Icon(
-                        Icons.play_arrow_rounded,
+                        isImage ? Icons.visibility_rounded : Icons.play_arrow_rounded,
                         color: Colors.black87,
                         size: 28,
                       ),
@@ -358,8 +421,8 @@ class DownloadsScreen extends StatelessWidget {
                   ),
                 ),
                 Positioned(
-                  top: 12,
-                  left: 12,
+                  top: 60,
+                  right: 12,
                   child: _buildActionButton(
                     icon: Icons.delete_rounded,
                     onPressed: () => _showDeleteDialog(context, item, theme),
@@ -385,7 +448,7 @@ class DownloadsScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Tap to play',
+                        isImage ? 'Tap to view' : 'Tap to play',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: Colors.white.withOpacity(0.8),
                         ),

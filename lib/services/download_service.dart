@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import '../models/reel_item.dart';
@@ -10,7 +11,7 @@ class DownloadService {
   final InstagramService _instagramService = InstagramService();
   final ThumbnailService _thumbnailService = ThumbnailService();
 
-  /// Downloads Instagram reel from URL and returns ReelItem
+  /// Downloads Instagram content (reel/story) from URL and returns ReelItem
   Future<ReelItem> downloadInstagramReel({
     required String reelUrl,
     required void Function(double progress) onProgress,
@@ -20,32 +21,52 @@ class DownloadService {
       throw Exception('Invalid Instagram URL');
     }
 
-    // Get post data using optimized method for release mode compatibility
+    // Get post data using optimized method
     final postData = await _instagramService.getPostDataOptimized(reelUrl);
 
-    if (postData.videoUrl == null || postData.videoUrl!.isEmpty) {
-      throw Exception('Could not find video URL for this reel');
+    // Determine media URL and file type
+    String mediaUrl;
+    String fileExtension;
+    bool isVideo;
+    
+    if (postData.isVideo && postData.videoUrl != null) {
+      // Video content (reels)
+      mediaUrl = postData.videoUrl!;
+      fileExtension = 'mp4';
+      isVideo = true;
+    } else if (postData.displayUrl != null) {
+      // Image content (stories)
+      mediaUrl = postData.displayUrl!;
+      fileExtension = 'jpg';
+      isVideo = false;
+    } else {
+      throw Exception('Could not find valid media URL for this content');
     }
 
     // Generate filename
     final shortcode =
         postData.shortcode ?? InstagramUtils.extractShortcodeFromUrl(reelUrl);
     final filename =
-        'reel_${shortcode}_${DateTime.now().millisecondsSinceEpoch}.mp4';
+        '${isVideo ? "reel" : "story"}_${shortcode}_${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
 
-    // Download video
+    // Download media
     final filePath = await downloadToAppDir(
-      videoUrl: Uri.parse(postData.videoUrl!),
+      mediaUrl: Uri.parse(mediaUrl),
       onProgress: onProgress,
       suggestedName: filename,
     );
 
-    // Create ReelItem
+    // Create ReelItem (works for both videos and images)
     String? thumbnailPath;
     try {
-      thumbnailPath = await _thumbnailService.generate(filePath);
+      if (isVideo) {
+        // Generate thumbnail from video
+        thumbnailPath = await _thumbnailService.generate(filePath);
+      } else {
+        // For images, use the image itself as thumbnail
+        thumbnailPath = filePath;
+      }
     } catch (_) {
-      // If thumbnail generation fails, proceed without it
       thumbnailPath = null;
     }
 
@@ -58,9 +79,10 @@ class DownloadService {
     );
   }
 
+  /// Downloads media file to app directory
   /// Returns (filePath)
   Future<String> downloadToAppDir({
-    required Uri videoUrl,
+    required Uri mediaUrl,
     required void Function(double progress) onProgress, // 0..1
     String? suggestedName,
   }) async {
@@ -69,10 +91,10 @@ class DownloadService {
     if (!await reelsDir.exists()) await reelsDir.create(recursive: true);
 
     final name =
-        suggestedName ?? 'reel_${DateTime.now().millisecondsSinceEpoch}.mp4';
+        suggestedName ?? 'media_${DateTime.now().millisecondsSinceEpoch}';
     final file = File('${reelsDir.path}/$name');
 
-    final req = http.Request('GET', videoUrl);
+    final req = http.Request('GET', mediaUrl);
     final res = await req.send();
 
     if (res.statusCode != 200) {

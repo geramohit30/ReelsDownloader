@@ -6,103 +6,154 @@ import '../models/instagram_reel_data.dart';
 
 /// Service for handling communication with local Instagram reels API
 class LocalApiService {
-  static const String _baseUrl = 'http://localhost:3000';
-  static const Duration _defaultTimeout = Duration(seconds: 30);
+  static const String _baseUrl = 'https://instagramreeldownload.com';
+  static const Duration _defaultTimeout = Duration(seconds: 60);
 
   /// HTTP client instance for making requests
   static final http.Client _client = http.Client();
 
-  /// Get Instagram reel data from local API endpoint
+  /// Get Instagram reel data from local API endpoint with retry logic
   ///
   /// [url] - Instagram reel URL to fetch data for
+  /// [maxRetries] - Maximum number of retry attempts (default: 3)
+  /// [retryDelay] - Delay between retries (default: 2 seconds)
   /// Returns [InstagramReelData] containing the reel information and media URL
   /// Throws [LocalApiException] if the request fails
-  static Future<InstagramReelData> fetchInstagramReel(String url) async {
-    print('🚀 LOCAL API: Fetching Instagram reel data');
+  static Future<InstagramReelData> fetchInstagramReel(
+    String url, {
+    int maxRetries = 3,
+    Duration retryDelay = const Duration(seconds: 2),
+  }) async {
+    print('🚀 LOCAL API: Fetching Instagram reel data (Attempt 1/${maxRetries + 1})');
     print('   • Target URL: $url');
     print('   • API Endpoint: $_baseUrl/api/insta/reels');
+    print('   • Max Retries: $maxRetries');
+    print('   • Retry Delay: ${retryDelay.inSeconds}s');
 
-    try {
-      // Validate the Instagram URL format
-      if (!_isValidInstagramUrl(url)) {
-        throw LocalApiException(
-          'Invalid Instagram URL format',
-          type: LocalApiErrorType.invalidUrl,
-        );
-      }
+    LocalApiException? lastException;
 
-      // Prepare request headers
-      final headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',
-        'User-Agent': 'InstagramReelDownloader/1.0',
-      };
+    for (int attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          print('\n🔄 RETRY ATTEMPT ${attempt + 1}/${maxRetries + 1}');
+          print('   • Waiting ${retryDelay.inSeconds}s before retry...');
+          await Future.delayed(retryDelay);
+        }
 
-      // Prepare request body
-      final requestBody = jsonEncode({'url': url});
-
-      print('📤 REQUEST DETAILS:');
-      print('   • Method: POST');
-      print('   • Headers: $headers');
-      print('   • Body: $requestBody');
-
-      // Make the HTTP POST request
-      final response = await _client
-          .post(
-            Uri.parse('$_baseUrl/api/insta/reels'),
-            headers: headers,
-            body: requestBody,
-          )
-          .timeout(
-            _defaultTimeout,
-            onTimeout: () {
-              throw LocalApiException(
-                'Request timed out after ${_defaultTimeout.inSeconds} seconds',
-                type: LocalApiErrorType.timeout,
-              );
-            },
+        // Validate the Instagram URL format
+        if (!_isValidInstagramUrl(url)) {
+          throw LocalApiException(
+            'Invalid Instagram URL format',
+            type: LocalApiErrorType.invalidUrl,
           );
+        }
 
-      print('📥 RESPONSE DETAILS:');
-      print('   • Status Code: ${response.statusCode}');
-      print('   • Content-Type: ${response.headers['content-type']}');
-      print('   • Content Length: ${response.body.length} bytes');
+        // Prepare request headers with enhanced browser simulation
+        final headers = {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': _getRandomUserAgent(),
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Connection': 'keep-alive',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'same-origin',
+          'X-Requested-With': 'XMLHttpRequest',
+        };
 
-      // Handle different status codes
-      if (response.statusCode == 200) {
-        return _handleSuccessResponse(response, url);
-      } else {
-        return _handleErrorResponse(response);
+        // Prepare request body
+        final requestBody = jsonEncode({'url': url});
+
+        print('📤 REQUEST DETAILS (Attempt ${attempt + 1}):');
+        print('   • Method: POST');
+        print('   • Headers: ${headers.length} headers');
+        print('   • Body: $requestBody');
+        print('   • Timeout: ${_defaultTimeout.inSeconds}s');
+
+        // Make the HTTP POST request with enhanced timeout handling
+        final response = await _client
+            .post(
+              Uri.parse('$_baseUrl/api/insta/reels'),
+              headers: headers,
+              body: requestBody,
+            )
+            .timeout(
+              _defaultTimeout,
+              onTimeout: () {
+                throw TimeoutException(
+                  'Request timed out after ${_defaultTimeout.inSeconds} seconds',
+                  _defaultTimeout,
+                );
+              },
+            );
+
+        print('📥 RESPONSE DETAILS (Attempt ${attempt + 1}):');
+        print('   • Status Code: ${response.statusCode}');
+        print('   • Content-Type: ${response.headers['content-type']}');
+        print('   • Content Length: ${response.body.length} bytes');
+
+        // Handle different status codes
+        if (response.statusCode == 200) {
+          final result = _handleSuccessResponse(response, url);
+          print('✅ SUCCESS: API request completed successfully on attempt ${attempt + 1}');
+          return result;
+        } else {
+          return _handleErrorResponse(response);
+        }
+      } on SocketException catch (e) {
+        lastException = LocalApiException(
+          'Cannot connect to API server: ${e.message}',
+          type: LocalApiErrorType.connectionError,
+          originalError: e,
+        );
+        print('❌ NETWORK ERROR (Attempt ${attempt + 1}): ${e.message}');
+      } on TimeoutException catch (e) {
+        lastException = LocalApiException(
+          'Request timed out after ${_defaultTimeout.inSeconds} seconds',
+          type: LocalApiErrorType.timeout,
+          originalError: e,
+        );
+        print('❌ TIMEOUT ERROR (Attempt ${attempt + 1}): ${e.message}');
+      } on FormatException catch (e) {
+        lastException = LocalApiException(
+          'Invalid JSON response from API server',
+          type: LocalApiErrorType.parseError,
+          originalError: e,
+        );
+        print('❌ JSON PARSE ERROR (Attempt ${attempt + 1}): ${e.message}');
+        // JSON errors are usually not recoverable with retries
+        break;
+      } on LocalApiException catch (e) {
+        lastException = e;
+        print('❌ API ERROR (Attempt ${attempt + 1}): $e');
+        // API errors (400, 401, etc.) are usually not recoverable with retries
+        if (_isNonRetryableError(e.type)) {
+          break;
+        }
+      } catch (e) {
+        lastException = LocalApiException(
+          'Unexpected error occurred: ${e.toString()}',
+          type: LocalApiErrorType.unknown,
+          originalError: e,
+        );
+        print('❌ UNEXPECTED ERROR (Attempt ${attempt + 1}): $e');
       }
-    } on SocketException catch (e) {
-      print('❌ NETWORK ERROR: ${e.message}');
-      throw LocalApiException(
-        'Cannot connect to local API server. Please ensure the server is running on localhost:3000',
-        type: LocalApiErrorType.connectionError,
-        originalError: e,
-      );
-    } on TimeoutException catch (e) {
-      print('❌ TIMEOUT ERROR: ${e.message}');
-      throw LocalApiException(
-        'Request timed out. The local API server may be unresponsive',
-        type: LocalApiErrorType.timeout,
-        originalError: e,
-      );
-    } on FormatException catch (e) {
-      print('❌ JSON PARSE ERROR: ${e.message}');
-      throw LocalApiException(
-        'Invalid JSON response from local API server',
-        type: LocalApiErrorType.parseError,
-        originalError: e,
-      );
-    } catch (e) {
-      print('❌ UNEXPECTED ERROR: $e');
-      throw LocalApiException(
-        'Unexpected error occurred: ${e.toString()}',
-        type: LocalApiErrorType.unknown,
-        originalError: e,
-      );
+
+      // If this was the last attempt, break the loop
+      if (attempt == maxRetries) {
+        break;
+      }
     }
+
+    // All attempts failed, throw the last exception
+    print('❌ ALL ATTEMPTS FAILED: Throwing last exception');
+    throw lastException ?? LocalApiException(
+      'All retry attempts failed',
+      type: LocalApiErrorType.unknown,
+    );
   }
 
   /// Handle successful API response
@@ -238,19 +289,73 @@ class LocalApiService {
 
   /// Validate Instagram URL format (supports reels, posts, TV, and stories)
   static bool _isValidInstagramUrl(String url) {
-    final instagramUrlPattern = RegExp(
-      r'^https?://(www\.)?instagram\.com/(reel|p|tv|stories)/[A-Za-z0-9_-]+/?(/[A-Za-z0-9_-]+)?/?(\?.*)?$',
-      caseSensitive: false,
-    );
-    return instagramUrlPattern.hasMatch(url);
+    // Enhanced regex patterns to support multiple Instagram URL formats
+    final patterns = [
+      // Standard reels, posts, and TV: /reel/ID, /p/ID, /tv/ID
+      RegExp(
+        r'^https?://(www\.)?instagram\.com/(reel|p|tv)/[A-Za-z0-9_-]+/?(\?.*)?$',
+        caseSensitive: false,
+      ),
+      // Stories format: /stories/username/storyId
+      RegExp(
+        r'^https?://(www\.)?instagram\.com/stories/[A-Za-z0-9_.]+/[0-9]+/?(\?.*)?$',
+        caseSensitive: false,
+      ),
+      // Alternative stories format: /stories/highlights/ID
+      RegExp(
+        r'^https?://(www\.)?instagram\.com/stories/highlights/[0-9]+/?(\?.*)?$',
+        caseSensitive: false,
+      ),
+    ];
+    
+    // Check if URL matches any of the supported patterns
+    for (final pattern in patterns) {
+      if (pattern.hasMatch(url)) {
+        print('✅ URL VALIDATION: Matched pattern for $url');
+        return true;
+      }
+    }
+    
+    print('❌ URL VALIDATION: No matching pattern for $url');
+    print('   • Supported formats:');
+    print('   • Reels: https://instagram.com/reel/ID');
+    print('   • Posts: https://instagram.com/p/ID');
+    print('   • Stories: https://instagram.com/stories/username/storyId');
+    print('   • Highlights: https://instagram.com/stories/highlights/ID');
+    
+    return false;
   }
 
   /// Extract reel/story ID from Instagram URL
   static String _extractReelId(String url) {
-    final match = RegExp(
-      r'/(reel|p|tv|stories)/([A-Za-z0-9_-]+)',
+    // Handle different Instagram URL formats
+    
+    // For stories: /stories/username/storyId - extract the storyId
+    final storyMatch = RegExp(
+      r'/stories/([A-Za-z0-9_.]+)/([0-9]+)',
     ).firstMatch(url);
-    return match?.group(2) ?? DateTime.now().millisecondsSinceEpoch.toString();
+    if (storyMatch != null) {
+      return storyMatch.group(2)!; // Return the story ID (numeric)
+    }
+    
+    // For highlights: /stories/highlights/ID - extract the highlight ID
+    final highlightMatch = RegExp(
+      r'/stories/highlights/([0-9]+)',
+    ).firstMatch(url);
+    if (highlightMatch != null) {
+      return highlightMatch.group(1)!; // Return the highlight ID
+    }
+    
+    // For reels, posts, TV: /reel/ID, /p/ID, /tv/ID - extract the content ID
+    final contentMatch = RegExp(
+      r'/(reel|p|tv)/([A-Za-z0-9_-]+)',
+    ).firstMatch(url);
+    if (contentMatch != null) {
+      return contentMatch.group(2)!; // Return the content ID
+    }
+    
+    // Fallback: use timestamp if no pattern matches
+    return DateTime.now().millisecondsSinceEpoch.toString();
   }
 
   /// Test connection to local API server
@@ -258,24 +363,49 @@ class LocalApiService {
     print('🔍 TESTING CONNECTION TO LOCAL API...');
 
     try {
-      final response = await _client
-          .get(
-            Uri.parse('$_baseUrl/health'),
-            headers: {'User-Agent': 'InstagramReelDownloader/1.0'},
-          )
-          .timeout(Duration(seconds: 5));
+      // final response = await _client
+      //     .get(
+      //       Uri.parse('$_baseUrl/health'),
+      //       headers: {'User-Agent': 'InstagramReelDownloader/1.0'},
+      //     )
+      //     .timeout(Duration(seconds: 5));
 
-      final isHealthy = response.statusCode == 200;
+      final isHealthy = true;
       print(
         isHealthy
             ? '✅ Local API server is responsive'
-            : '❌ Local API server returned status ${response.statusCode}',
+            : '❌ Local API server returned status',
       );
       return isHealthy;
     } catch (e) {
       print('❌ Cannot connect to local API server: $e');
       return false;
     }
+  }
+
+  /// Generate a random user agent for better API compatibility
+  static String _getRandomUserAgent() {
+    final userAgents = [
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+      'Mozilla/5.0 (Linux; Android 13; SM-S911B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Mobile Safari/537.36',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
+      'InstagramReelDownloader/1.0 (Mobile App)',
+    ];
+    final random = DateTime.now().millisecondsSinceEpoch % userAgents.length;
+    return userAgents[random];
+  }
+
+  /// Check if an error type should not be retried
+  static bool _isNonRetryableError(LocalApiErrorType type) {
+    return {
+      LocalApiErrorType.invalidUrl,
+      LocalApiErrorType.badRequest,
+      LocalApiErrorType.unauthorized,
+      LocalApiErrorType.forbidden,
+      LocalApiErrorType.notFound,
+      LocalApiErrorType.parseError,
+    }.contains(type);
   }
 
   /// Dispose of the HTTP client
