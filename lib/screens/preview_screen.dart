@@ -104,7 +104,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
             children: [
               Expanded(
                 child: Container(
-                  constraints: const BoxConstraints(maxHeight: 300),
+                  constraints: const BoxConstraints(maxHeight: 100),
                   child: _buildMediaPreview(theme),
                 ),
               ),

@@ -17,7 +17,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final _ctrl = TextEditingController();
   final _formKey = GlobalKey<FormState>();
-  bool _useLocalApi = false; // Toggle for local API
 
   @override
   void dispose() {
@@ -26,7 +25,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String? _validateUrl(String? v) {
-    if (v == null || v.trim().isEmpty) return 'Paste a reel URL';
+    if (v == null || v
+        .trim()
+        .isEmpty) return 'Paste a reel URL';
     final s = v.trim();
     if (!InstagramUtils.isInstagramUrl(s)) {
       return 'Please enter a valid Instagram reel or story URL';
@@ -40,11 +41,9 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     try {
-      // Choose API based on toggle
-      final postData =
-          _useLocalApi
-              ? await provider.fetchReelFromLocalApi(input)
-              : await provider.fetchReelForPreview(input);
+      // Use fetchReelForPreview which now includes automatic fallback
+      // Instagram service first, Local API as backup if Instagram fails
+      final postData = await provider.fetchReelForPreview(input);
 
       if (!mounted) return;
 
@@ -66,9 +65,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final isNetworkError =
           e.toString().contains('SocketException') ||
-          e.toString().contains('Failed host lookup') ||
-          e.toString().contains('Network error') ||
-          e.toString().contains('Local API server');
+              e.toString().contains('Failed host lookup') ||
+              e.toString().contains('Network error') ||
+              e.toString().contains('Local API server');
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -134,7 +133,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: AnimationConfiguration.toStaggeredList(
                     duration: const Duration(milliseconds: 400),
                     childAnimationBuilder:
-                        (widget) => SlideAnimation(
+                        (widget) =>
+                        SlideAnimation(
                           verticalOffset: 50.0,
                           child: FadeInAnimation(child: widget),
                         ),
@@ -145,8 +145,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       _buildUrlInputCard(theme, isBusy),
                       const SizedBox(height: 24),
                       _buildDownloadButton(theme, isBusy, provider),
-                      const SizedBox(height: 16),
-                      _buildApiToggle(theme),
                       if (isBusy)
                         ..._buildProgressIndicator(theme, progress, provider),
                       const SizedBox(height: 40),
@@ -276,17 +274,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: theme.colorScheme.primary,
                     ),
                     onPressed:
-                        isBusy
-                            ? null
-                            : () async {
-                              HapticFeedback.lightImpact();
-                              final data = await Clipboard.getData(
-                                'text/plain',
-                              );
-                              if (data?.text != null) {
-                                _ctrl.text = data!.text!.trim();
-                              }
-                            },
+                    isBusy
+                        ? null
+                        : () async {
+                      HapticFeedback.lightImpact();
+                      final data = await Clipboard.getData(
+                        'text/plain',
+                      );
+                      if (data?.text != null) {
+                        _ctrl.text = data!.text!.trim();
+                      }
+                    },
                   ),
                 ),
               ),
@@ -307,23 +305,21 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDownloadButton(
-    ThemeData theme,
-    bool isBusy,
-    DownloadProvider provider,
-  ) {
+  Widget _buildDownloadButton(ThemeData theme,
+      bool isBusy,
+      DownloadProvider provider,) {
     return Container(
       width: double.infinity,
       height: 56,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors:
-              isBusy
-                  ? [
-                    theme.colorScheme.onSurface.withOpacity(0.4),
-                    theme.colorScheme.onSurface.withOpacity(0.5),
-                  ]
-                  : [theme.colorScheme.primary, theme.colorScheme.secondary],
+          isBusy
+              ? [
+            theme.colorScheme.onSurface.withOpacity(0.4),
+            theme.colorScheme.onSurface.withOpacity(0.5),
+          ]
+              : [theme.colorScheme.primary, theme.colorScheme.secondary],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
@@ -339,12 +335,12 @@ class _HomeScreenState extends State<HomeScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap:
-              isBusy
-                  ? null
-                  : () {
-                    HapticFeedback.mediumImpact();
-                    _onDownload();
-                  },
+          isBusy
+              ? null
+              : () {
+            HapticFeedback.mediumImpact();
+            _onDownload();
+          },
           borderRadius: BorderRadius.circular(16),
           child: Center(
             child: Row(
@@ -369,8 +365,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(
                   isBusy
                       ? (provider.isFetchingPreview
-                          ? 'Fetching...'
-                          : 'Processing...')
+                      ? 'Fetching...'
+                      : 'Processing...')
                       : 'Download Reel',
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: Colors.white,
@@ -385,11 +381,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  List<Widget> _buildProgressIndicator(
-    ThemeData theme,
-    double? progress,
-    DownloadProvider provider,
-  ) {
+  List<Widget> _buildProgressIndicator(ThemeData theme,
+      double? progress,
+      DownloadProvider provider,) {
     return [
       const SizedBox(height: 24),
       Card(
@@ -510,13 +504,15 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 80,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                itemCount: provider.items.take(5).length,
+                itemCount: provider.items
+                    .take(5)
+                    .length,
                 separatorBuilder: (_, __) => const SizedBox(width: 12),
                 itemBuilder: (_, index) {
                   final item = provider.items[index];
                   final hasThumb =
                       item.thumbnailPath != null &&
-                      File(item.thumbnailPath!).existsSync();
+                          File(item.thumbnailPath!).existsSync();
                   return Container(
                     width: 60,
                     decoration: BoxDecoration(
@@ -582,107 +578,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 },
               ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildApiToggle(ThemeData theme) {
-    return Card(
-      color: theme.cardColor,
-      elevation: 0.5,
-      shadowColor: theme.colorScheme.primary.withOpacity(0.2),
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.api_rounded,
-                  color: theme.colorScheme.primary,
-                  size: 24,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'API Source',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _useLocalApi ? 'Local API Server' : 'Instagram Direct',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _useLocalApi
-                            ? 'Using localhost:3000 API server'
-                            : 'Directly fetching from Instagram',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurface.withOpacity(0.6),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Switch.adaptive(
-                  value: _useLocalApi,
-                  onChanged: (value) {
-                    setState(() {
-                      _useLocalApi = value;
-                    });
-                    HapticFeedback.lightImpact();
-                  },
-                  activeColor: theme.colorScheme.primary,
-                ),
-              ],
-            ),
-            if (_useLocalApi) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: theme.colorScheme.primary.withOpacity(0.3),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.info_outline,
-                      color: theme.colorScheme.primary,
-                      size: 16,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Make sure your local API server is running on localhost:3000',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ],
         ),
       ),
