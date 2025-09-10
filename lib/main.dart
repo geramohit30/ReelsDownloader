@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'providers/download_provider.dart';
+import 'providers/theme_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/downloads_screen.dart';
 import 'screens/settings_screen.dart';
@@ -9,8 +10,13 @@ import 'screens/settings_screen.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => DownloadProvider()..load(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => DownloadProvider()..load()),
+        ChangeNotifierProvider(
+          create: (_) => ThemeProvider()..loadThemePreference(),
+        ),
+      ],
       child: const MyApp(),
     ),
   );
@@ -21,13 +27,17 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Insta Reel Downloader',
-      debugShowCheckedModeBanner: false,
-      theme: _buildLightTheme(),
-      darkTheme: _buildDarkTheme(),
-      themeMode: ThemeMode.system,
-      home: const _Root(),
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        return MaterialApp(
+          title: 'Insta Reel Downloader',
+          debugShowCheckedModeBanner: false,
+          theme: _buildLightTheme(),
+          darkTheme: _buildDarkTheme(),
+          themeMode: themeProvider.themeMode,
+          home: const _Root(),
+        );
+      },
     );
   }
 
