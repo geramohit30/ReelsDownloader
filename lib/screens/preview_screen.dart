@@ -102,11 +102,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(
-                child: Container(
-                  constraints: const BoxConstraints(maxHeight: 100),
-                  child: _buildMediaPreview(theme),
-                ),
+              Container(
+                height: 400, // Fixed height instead of Expanded
+                child: _buildMediaPreview(theme),
               ),
               const SizedBox(height: 16),
               // _buildMeta(theme),
@@ -130,149 +128,152 @@ class _PreviewScreenState extends State<PreviewScreen> {
     final hasVideoUrl = widget.postData.videoUrl?.isNotEmpty ?? false;
 
     return Container(
+      margin: EdgeInsets.symmetric(horizontal: 60)  ,
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+        // color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
         borderRadius: BorderRadius.circular(20),
       ),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(1),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(3),
         child: AspectRatio(
           aspectRatio: hasController ? _controller!.value.aspectRatio : 9 / 16,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              if (hasController)
-                GestureDetector(
-                  onTap: () {
-                    if (_controller!.value.isPlaying) {
-                      _controller!.pause();
-                    } else {
-                      _controller!.play();
-                    }
-                    setState(() {});
-                  },
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      VideoPlayer(_controller!),
-                      if (!_controller!.value.isPlaying)
-                        Center(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.35),
-                              shape: BoxShape.circle,
-                            ),
-                            padding: const EdgeInsets.all(10),
-                            child: const Icon(
-                              Icons.play_arrow_rounded,
-                              color: Colors.white,
-                              size: 38,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (hasController)
+                  GestureDetector(
+                    onTap: () {
+                      if (_controller!.value.isPlaying) {
+                        _controller!.pause();
+                      } else {
+                        _controller!.play();
+                      }
+                      setState(() {});
+                    },
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        VideoPlayer(_controller!),
+                        if (!_controller!.value.isPlaying)
+                          Center(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.black.withOpacity(0.35),
+                                shape: BoxShape.circle,
+                              ),
+                              padding: const EdgeInsets.all(10),
+                              child: const Icon(
+                                Icons.play_arrow_rounded,
+                                color: Colors.white,
+                                size: 38,
+                              ),
                             ),
                           ),
-                        ),
-                    ],
-                  ),
-                )
-              else if (hasVideoUrl)
-                // Clean placeholder when a video URL exists; avoid showing the image first
-                Container(
-                  color: theme.colorScheme.surfaceVariant,
-                  child: Center(
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: 10),
-                        Text(
-                          'Preparing preview...',
-                          style: TextStyle(color: Colors.black54),
-                        ),
                       ],
                     ),
-                  ),
-                )
-              else if (displayUrl != null && displayUrl.isNotEmpty)
-                Image.network(
-                  displayUrl,
-                  fit: BoxFit.fitHeight,
-                  loadingBuilder: (context, child, progress) {
-                    if (progress == null) return child;
-                    return Container(
-                      color: theme.colorScheme.surfaceVariant,
-                      child: const Center(
-                        child: SizedBox(
-                          width: 24,
-                          height: 24,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
+                  )
+                else if (hasVideoUrl)
+                  // Clean placeholder when a video URL exists; avoid showing the image first
+                  Container(
+                    color: theme.colorScheme.surfaceVariant,
+                    child: Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                          SizedBox(width: 10),
+                          Text(
+                            'Preparing preview...',
+                            style: TextStyle(color: Colors.black54),
+                          ),
+                        ],
                       ),
-                    );
-                  },
-                  errorBuilder: (context, error, stack) {
-                    return Container(
-                      color: theme.colorScheme.surfaceVariant,
-                      child: const Center(
-                        child: Icon(Icons.broken_image_outlined),
+                    ),
+                  )
+                else if (displayUrl != null && displayUrl.isNotEmpty)
+                  Image.network(
+                    displayUrl,
+                    loadingBuilder: (context, child, progress) {
+                      if (progress == null) return child;
+                      return Container(
+                        color: theme.colorScheme.surfaceVariant,
+                        child: const Center(
+                          child: SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stack) {
+                      return Container(
+                        color: theme.colorScheme.surfaceVariant,
+                        child: const Center(
+                          child: Icon(Icons.broken_image_outlined),
+                        ),
+                      );
+                    },
+                  )
+                else
+                  Container(
+                    color: theme.colorScheme.surfaceVariant,
+                    child: const Center(
+                      child: Icon(Icons.image_not_supported_outlined),
+                    ),
+                  ),
+
+                if (_isInitializing)
+                  Container(
+                    color: Colors.black.withOpacity(0.05),
+                    child: const Center(
+                      child: SizedBox(
+                        width: 28,
+                        height: 28,
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
-                    );
-                  },
-                )
-              else
-                Container(
-                  color: theme.colorScheme.surfaceVariant,
-                  child: const Center(
-                    child: Icon(Icons.image_not_supported_outlined),
+                    ),
                   ),
-                ),
 
-              if (_isInitializing)
-                Container(
-                  color: Colors.black.withOpacity(0.05),
-                  child: const Center(
-                    child: SizedBox(
-                      width: 28,
-                      height: 28,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                if (!hasController && hasVideoUrl)
+                  Positioned(
+                    right: 8,
+                    bottom: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.45),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: const [
+                          Icon(
+                            Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            'Tap to play',
+                            style: TextStyle(color: Colors.white),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-
-              if (!hasController && hasVideoUrl)
-                Positioned(
-                  right: 8,
-                  bottom: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.45),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: const [
-                        Icon(
-                          Icons.play_arrow_rounded,
-                          color: Colors.white,
-                          size: 18,
-                        ),
-                        SizedBox(width: 4),
-                        Text(
-                          'Tap to play',
-                          style: TextStyle(color: Colors.white),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
