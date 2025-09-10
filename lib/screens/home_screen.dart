@@ -241,12 +241,15 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: theme.colorScheme.primary,
                   size: 24,
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  'Paste Instagram Reel or Story URL',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.primary,
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'Paste Insta Reel/Story URL',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                    ),
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -293,7 +296,7 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             const SizedBox(height: 12),
             Text(
-              'Paste a public Instagram Reel or Story link for personal/testing use.',
+              'Paste a public Instagram Reel or Story link to download',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurface.withOpacity(0.6),
               ),

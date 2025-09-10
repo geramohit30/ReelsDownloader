@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'privacy_policy_screen.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -33,9 +35,9 @@ class SettingsScreen extends StatelessWidget {
                       duration: const Duration(milliseconds: 400),
                       childAnimationBuilder:
                           (widget) => SlideAnimation(
-                            verticalOffset: 50.0,
-                            child: FadeInAnimation(child: widget),
-                          ),
+                        verticalOffset: 50.0,
+                        child: FadeInAnimation(child: widget),
+                      ),
                       children: [
                         // _buildGeneralSection(theme, context),
                         // const SizedBox(height: 20),
@@ -240,7 +242,15 @@ class SettingsScreen extends StatelessWidget {
             Icons.chevron_right_rounded,
             color: theme.colorScheme.onSurface.withOpacity(0.6),
           ),
-          onTap: () => _showFeatureComingSoon(context),
+          onTap: () {
+            HapticFeedback.lightImpact();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => const PrivacyPolicyScreen(),
+              ),
+            );
+          },
           theme: theme,
         ),
         _buildSettingsTile(
@@ -384,56 +394,56 @@ class SettingsScreen extends StatelessWidget {
       ),
       builder:
           (context) => Container(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                const SizedBox(height: 20),
-                Text(
-                  'Choose Theme',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 20),
-                _buildThemeOption(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Theme.of(
                   context,
-                  'System Default',
-                  Icons.brightness_auto,
-                  true,
-                ),
-                _buildThemeOption(context, 'Light', Icons.light_mode, false),
-                _buildThemeOption(context, 'Dark', Icons.dark_mode, false),
-                const SizedBox(height: 20),
-              ],
+                ).colorScheme.onSurface.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(2),
+              ),
             ),
-          ),
+            const SizedBox(height: 20),
+            Text(
+              'Choose Theme',
+              style: Theme.of(
+                context,
+              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 20),
+            _buildThemeOption(
+              context,
+              'System Default',
+              Icons.brightness_auto,
+              true,
+            ),
+            _buildThemeOption(context, 'Light', Icons.light_mode, false),
+            _buildThemeOption(context, 'Dark', Icons.dark_mode, false),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildThemeOption(
-    BuildContext context,
-    String title,
-    IconData icon,
-    bool isSelected,
-  ) {
+      BuildContext context,
+      String title,
+      IconData icon,
+      bool isSelected,
+      ) {
     return ListTile(
       leading: Icon(icon),
       title: Text(title),
       trailing:
-          isSelected
-              ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
-              : null,
+      isSelected
+          ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary)
+          : null,
       onTap: () {
         Navigator.pop(context);
         _showFeatureComingSoon(context);
@@ -446,63 +456,61 @@ class SettingsScreen extends StatelessWidget {
       context: context,
       builder:
           (context) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.download_for_offline_rounded,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Insta Reel\nDownloader',
-                    overflow: TextOverflow.ellipsis,
-                    maxLines: 2,
-                    textAlign: TextAlign.start,
-                  ),
-                ),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Version: 1.0.0'),
-                SizedBox(height: 8),
-                Text('Built with Flutter'),
-                SizedBox(height: 8),
-                Text('For personal and testing use only.'),
-                SizedBox(height: 16),
-                Text(
-                  'This app allows you to download Instagram Reels for offline viewing. Please respect content creators and use downloaded content responsibly.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withOpacity(0.6),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.primary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
               ),
-            ],
+              child: Icon(
+                Icons.download_for_offline_rounded,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Text(
+                'Insta Reel\nDownloader',
+                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
+                textAlign: TextAlign.start,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Version: 1.0.0'),
+            SizedBox(height: 8),
+            Text('Built with Flutter'),
+            SizedBox(height: 16),
+            Text(
+              'This app allows you to download Instagram Reels for offline viewing. Please respect content creators and use downloaded content responsibly.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withOpacity(0.6),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
           ),
+        ],
+      ),
     );
   }
 
@@ -511,45 +519,81 @@ class SettingsScreen extends StatelessWidget {
       context: context,
       builder:
           (context) => AlertDialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-            title: const Text('Support & Feedback'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Need help or have suggestions?'),
-                SizedBox(height: 16),
-                Text('• Report bugs'),
-                Text('• Request features'),
-                Text('• General support'),
-                SizedBox(height: 16),
-                Text(
-                  'Contact us through the app store or our website.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(
-                      context,
-                    ).colorScheme.onSurface.withOpacity(0.6),
-                  ),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Close'),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: const Text('Support & Feedback'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Need help or have suggestions?'),
+            SizedBox(height: 16),
+            Text('• Report bugs'),
+            Text('• Request features'),
+            Text('• General support'),
+            SizedBox(height: 16),
+            Text(
+              'Contact us through the app store or our website.',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withOpacity(0.6),
               ),
-              ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _showFeatureComingSoon(context);
-                },
-                child: const Text('Contact'),
-              ),
-            ],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
           ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _launchEmail(context);
+            },
+            child: const Text('Contact'),
+          ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _launchEmail(BuildContext context) async {
+    final Uri emailUri = Uri(
+      scheme: 'mailto',
+      path: 'instagramreeldownloadapp@gmail.com',
+      queryParameters: {
+        'subject': 'Instagram Reel Downloader - Support Request',
+        'body':
+        'Hello,\n\nI have a question/suggestion regarding the Instagram Reel Downloader app:\n\n',
+      },
+    );
+
+    try {
+      if (await canLaunchUrl(emailUri)) {
+        await launchUrl(emailUri);
+      } else {
+        throw Exception('Could not launch email client');
+      }
+    } catch (e) {
+      // If email client can't be opened, show an error message
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to open email client. Please email us at: instagramreeldownloadapp@gmail.com',
+            ),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    }
   }
 }
