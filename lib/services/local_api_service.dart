@@ -48,9 +48,8 @@ class LocalApiService {
           );
         }
 
-        // Prepare request headers with enhanced browser simulation
+        // Prepare request headers for GET request
         final headers = {
-          'Content-Type': 'application/json',
           'Accept': 'application/json',
           'User-Agent': _getRandomUserAgent(),
           'Accept-Language': 'en-US,en;q=0.9',
@@ -61,24 +60,24 @@ class LocalApiService {
           'Sec-Fetch-Dest': 'empty',
           'Sec-Fetch-Mode': 'cors',
           'Sec-Fetch-Site': 'same-origin',
-          'X-Requested-With': 'XMLHttpRequest',
         };
 
-        // Prepare request body
-        final requestBody = jsonEncode({'url': url});
+        // Encode URL in base64 for the new GET API
+        final base64Url = base64Encode(utf8.encode(url));
+        final requestUrl = '$_baseUrl/api/insta/reels?url=$base64Url';
 
         print('📤 REQUEST DETAILS (Attempt ${attempt + 1}):');
-        print('   • Method: POST');
+        print('   • Method: GET');
         print('   • Headers: ${headers.length} headers');
-        print('   • Body: $requestBody');
+        print('   • Base64 URL: $base64Url');
+        print('   • Request URL: $requestUrl');
         print('   • Timeout: ${_defaultTimeout.inSeconds}s');
 
-        // Make the HTTP POST request with enhanced timeout handling
+        // Make the HTTP GET request with base64 encoded URL parameter
         final response = await _client
-            .post(
-              Uri.parse('$_baseUrl/api/insta/reels'),
+            .get(
+              Uri.parse(requestUrl),
               headers: headers,
-              body: requestBody,
             )
             .timeout(
               _defaultTimeout,
