@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import '../models/instagram_types.dart';
 import '../providers/download_provider.dart';
+import 'package:instareeldownloader/services/analytics_service.dart';
+
 
 class PreviewScreen extends StatefulWidget {
   const PreviewScreen({
@@ -27,6 +29,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
   @override
   void initState() {
     super.initState();
+    AnalyticsService.logScreenView('Preview Screen');
     _maybeInitVideo();
   }
 

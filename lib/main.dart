@@ -6,22 +6,50 @@ import 'providers/theme_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/downloads_screen.dart';
 import 'screens/settings_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'dart:async';
+
+// void main() {
+//   WidgetsFlutterBinding.ensureInitialized();
+//   await Firebase.initializeApp();
+//   runApp(
+//     MultiProvider(
+//       providers: [
+//         ChangeNotifierProvider(create: (_) => DownloadProvider()..load()),
+//         ChangeNotifierProvider(
+//           create: (_) => ThemeProvider()..loadThemePreference(),
+//         ),
+//       ],
+//       child: const MyApp(),
+//     ),
+//   );
+// }
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => DownloadProvider()..load()),
-        ChangeNotifierProvider(
-          create: (_) => ThemeProvider()..loadThemePreference(),
-        ),
-      ],
-      child: const MyApp(),
-    ),
-  );
-}
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    await Firebase.initializeApp();
+    debugPrint("✅ Firebase initialized!");
 
+    // Capture framework errors
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => DownloadProvider()..load()),
+          ChangeNotifierProvider(
+            create: (_) => ThemeProvider()..loadThemePreference(),
+          ),
+        ],
+        child: const MyApp(),
+      ),
+    );
+  }, (error, stack) {
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+  });
+}
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 

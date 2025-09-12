@@ -29,7 +29,9 @@ class DownloadProvider extends ChangeNotifier {
 
   static const _prefsKey = 'downloads_v1';
 
-  /// Fetches reel data using local API service with fallback to Instagram service
+  /// Fetches reel data using appropriate strategy based on content type
+  /// Stories: Direct to Local API
+  /// Reels: Local API with fallback to Instagram service 
   Future<InstagramPostData> fetchReelFromLocalApi(String reelUrl) async {
     if (!InstagramUtils.isInstagramUrl(reelUrl)) {
       throw Exception('Invalid Instagram URL');
@@ -40,14 +42,80 @@ class DownloadProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      print('🚀 PRIMARY: Using Local API Service for: $reelUrl');
+      // Check if this is a story URL
+      if (InstagramUtils.isInstagramStoryUrl(reelUrl)) {
+        print('🚀 STORY DETECTED: Using Local API directly for: $reelUrl');
+        return await _fetchStoryFromLocalApi(reelUrl);
+      } else {
+        print('🚀 REEL DETECTED: Using Local API with Instagram service fallback for: $reelUrl');
+        return await _fetchReelWithFallback(reelUrl);
+      }
+    } finally {
+      _isFetchingPreview = false;
+      notifyListeners();
+    }
+  }
+
+  /// Fetches story data directly from Local API (no scraping fallback)
+  Future<InstagramPostData> _fetchStoryFromLocalApi(String storyUrl) async {
+    try {
+      print('📱 STORY: Direct API call to Local API for: $storyUrl');
+
+      // Test if the local API is available
+      final isApiAvailable = await LocalApiService.testConnection();
+      if (!isApiAvailable) {
+        throw Exception(
+          'Local API server is not available. Stories require the Local API service to be running.',
+        );
+      }
+
+      // Fetch data from local API for stories
+      final reelData = await LocalApiService.fetchInstagramReel(
+        storyUrl,
+        maxRetries: 3,
+        retryDelay: const Duration(seconds: 3),
+      );
+
+      print('✅ STORY: Local API returned: ${reelData.toString()}');
+
+      // Detect content type from URL (JPG = story, MP4 = reel)
+      final isStory = reelData.mediaUrl.toLowerCase().contains('.jpg');
+      print('   • Content Type: ${isStory ? "Story (JPG)" : "Story (MP4)"}');
+
+      // Convert to InstagramPostData format
+      final postData = InstagramPostData(
+        id: reelData.id,
+        shortcode: reelData.id,
+        videoUrl: isStory ? null : reelData.mediaUrl, // Video URL only for video stories
+        displayUrl: isStory ? reelData.mediaUrl : reelData.thumbnailUrl, // Image URL for image stories
+        caption: reelData.title,
+        username: reelData.author,
+        isVideo: !isStory, // Most stories are images
+        takenAtTimestamp: DateTime.now(),
+      );
+
+      return postData;
+    } catch (e) {
+      print('❌ STORY: Local API failed: ${e.toString()}');
+      
+      if (e is LocalApiException) {
+        _errorMessage = e.userFriendlyMessage;
+      } else {
+        _errorMessage = 'Story Download Error: ${e.toString()}';
+      }
+      rethrow;
+    }
+  }
+
+  /// Fetches reel data using Local API first with Instagram service fallback
+  Future<InstagramPostData> _fetchReelWithFallback(String reelUrl) async {
+    try {
+      print('🎬 REEL: Primary attempt with Local API for: $reelUrl');
 
       // First test if the local API is available
       final isApiAvailable = await LocalApiService.testConnection();
       if (!isApiAvailable) {
-        print(
-          '⚠️ LOCAL API: Server test failed, trying fallback to Instagram service',
-        );
+        print('⚠️ REEL: Local API server test failed, trying fallback to Instagram service');
         return await _fallbackToInstagramService(reelUrl);
       }
 
@@ -58,7 +126,7 @@ class DownloadProvider extends ChangeNotifier {
         retryDelay: const Duration(seconds: 3),
       );
 
-      print('✅ Local API returned: ${reelData.toString()}');
+      print('✅ REEL: Local API returned: ${reelData.toString()}');
 
       // Detect content type from URL (JPG = story, MP4 = reel)
       final isStory = reelData.mediaUrl.toLowerCase().contains('.jpg');
@@ -68,12 +136,8 @@ class DownloadProvider extends ChangeNotifier {
       final postData = InstagramPostData(
         id: reelData.id,
         shortcode: reelData.id,
-        videoUrl:
-            isStory ? null : reelData.mediaUrl, // Video URL only for reels
-        displayUrl:
-            isStory
-                ? reelData.mediaUrl
-                : reelData.thumbnailUrl, // Image URL for stories
+        videoUrl: isStory ? null : reelData.mediaUrl, // Video URL only for reels
+        displayUrl: isStory ? reelData.mediaUrl : reelData.thumbnailUrl, // Image URL for stories
         caption: reelData.title,
         username: reelData.author,
         isVideo: !isStory, // Stories are images, reels are videos
@@ -82,18 +146,18 @@ class DownloadProvider extends ChangeNotifier {
 
       return postData;
     } catch (e) {
-      print('❌ Local API failed: ${e.toString()}');
+      print('❌ REEL: Local API failed: ${e.toString()}');
 
       // If Local API fails, try fallback to Instagram service
       if (e is LocalApiException &&
           (e.type == LocalApiErrorType.timeout ||
               e.type == LocalApiErrorType.connectionError ||
               e.type == LocalApiErrorType.serverError)) {
-        print('🔄 FALLBACK: Attempting Instagram service as backup...');
+        print('🔄 REEL: FALLBACK: Attempting Instagram service as backup...');
         try {
           return await _fallbackToInstagramService(reelUrl);
         } catch (fallbackError) {
-          print('❌ FALLBACK FAILED: ${fallbackError.toString()}');
+          print('❌ REEL: FALLBACK FAILED: ${fallbackError.toString()}');
           _errorMessage = e.userFriendlyMessage;
           rethrow;
         }
@@ -106,9 +170,6 @@ class DownloadProvider extends ChangeNotifier {
         _errorMessage = 'Local API Error: ${e.toString()}';
       }
       rethrow;
-    } finally {
-      _isFetchingPreview = false;
-      notifyListeners();
     }
   }
 
@@ -144,7 +205,9 @@ class DownloadProvider extends ChangeNotifier {
     }
   }
 
-  /// Fetches reel data for preview without downloading with Local API fallback
+  /// Fetches reel data for preview with appropriate strategy based on content type
+  /// Stories: Direct to Local API
+  /// Reels: Instagram service with Local API fallback
   Future<InstagramPostData> fetchReelForPreview(String reelUrl) async {
     if (!InstagramUtils.isInstagramUrl(reelUrl)) {
       throw Exception('Invalid Instagram URL');
@@ -155,22 +218,39 @@ class DownloadProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      print('🚀 PRIMARY: Using Instagram Service for preview: $reelUrl');
+      // Check if this is a story URL
+      if (InstagramUtils.isInstagramStoryUrl(reelUrl)) {
+        print('🚀 STORY PREVIEW: Using Local API directly for: $reelUrl');
+        return await _fetchStoryFromLocalApi(reelUrl);
+      } else {
+        print('🚀 REEL PREVIEW: Using Instagram service with Local API fallback for: $reelUrl');
+        return await _fetchReelPreviewWithFallback(reelUrl);
+      }
+    } finally {
+      _isFetchingPreview = false;
+      notifyListeners();
+    }
+  }
 
-      // First try the Instagram service (primary method)
+  /// Fetches reel preview using Instagram service first with Local API fallback
+  Future<InstagramPostData> _fetchReelPreviewWithFallback(String reelUrl) async {
+    try {
+      print('🎬 REEL PREVIEW: Primary attempt with Instagram Service for: $reelUrl');
+
+      // First try the Instagram service (primary method for reels)
       final postData = await _instagramService.getPostDataOptimized(reelUrl);
-      print('✅ PRIMARY SUCCESS: Instagram service returned data for preview');
+      print('✅ REEL PREVIEW: Instagram service returned data for preview');
       return postData;
     } catch (e) {
-      print('❌ PRIMARY FAILED: Instagram service failed: ${e.toString()}');
-      print('🔄 FALLBACK: Trying Local API as backup...');
+      print('❌ REEL PREVIEW: Instagram service failed: ${e.toString()}');
+      print('🔄 REEL PREVIEW: Trying Local API as backup...');
 
       // If Instagram service fails, try Local API as fallback
       try {
         // Test if the local API is available
         final isApiAvailable = await LocalApiService.testConnection();
         if (!isApiAvailable) {
-          print('⚠️ FALLBACK FAILED: Local API server not available');
+          print('⚠️ REEL PREVIEW: Local API server not available');
           throw e; // Re-throw original Instagram service error
         }
 
@@ -181,7 +261,7 @@ class DownloadProvider extends ChangeNotifier {
           retryDelay: const Duration(seconds: 3),
         );
 
-        print('✅ FALLBACK SUCCESS: Local API returned data for preview');
+        print('✅ REEL PREVIEW: Local API returned data for preview');
 
         // Detect content type from URL (JPG = story, MP4 = reel)
         final isStory = reelData.mediaUrl.toLowerCase().contains('.jpg');
@@ -191,12 +271,8 @@ class DownloadProvider extends ChangeNotifier {
         final postData = InstagramPostData(
           id: reelData.id,
           shortcode: reelData.id,
-          videoUrl:
-              isStory ? null : reelData.mediaUrl, // Video URL only for reels
-          displayUrl:
-              isStory
-                  ? reelData.mediaUrl
-                  : reelData.thumbnailUrl, // Image URL for stories
+          videoUrl: isStory ? null : reelData.mediaUrl, // Video URL only for reels
+          displayUrl: isStory ? reelData.mediaUrl : reelData.thumbnailUrl, // Image URL for stories
           caption: reelData.title,
           username: reelData.author,
           isVideo: !isStory, // Stories are images, reels are videos
@@ -205,12 +281,8 @@ class DownloadProvider extends ChangeNotifier {
 
         return postData;
       } catch (fallbackError) {
-        print(
-          '❌ FALLBACK ALSO FAILED: Local API error: ${fallbackError.toString()}',
-        );
-        print(
-          '🔴 ALL METHODS FAILED: Both Instagram service and Local API failed',
-        );
+        print('❌ REEL PREVIEW: Local API also failed: ${fallbackError.toString()}');
+        print('🔴 REEL PREVIEW: Both Instagram service and Local API failed');
 
         // If both methods fail, prioritize the original Instagram service error
         // as it's the primary method, but mention the fallback attempt
@@ -236,13 +308,12 @@ class DownloadProvider extends ChangeNotifier {
 
         rethrow;
       }
-    } finally {
-      _isFetchingPreview = false;
-      notifyListeners();
     }
   }
 
-  /// Downloads a reel/story from Instagram URL using Local API first
+  /// Downloads a reel/story from Instagram URL using appropriate strategy
+  /// Stories: Direct to Local API
+  /// Reels: Local API with Instagram service fallback
   Future<void> downloadReel(String reelUrl) async {
     if (_isDownloading) {
       throw Exception('Another download is already in progress');
@@ -254,52 +325,15 @@ class DownloadProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Try Local API first
-      final isApiAvailable = await LocalApiService.testConnection();
-
-      if (isApiAvailable) {
-        try {
-          print('🚀 DOWNLOAD: Using Local API for: $reelUrl');
-
-          // Get download URL from Local API
-          final reelData = await LocalApiService.fetchInstagramReel(
-            reelUrl,
-            maxRetries: 2,
-            retryDelay: const Duration(seconds: 3),
-          );
-
-          // Download directly from the provided URL
-          final reelItem = await _downloadFromUrl(
-            downloadUrl: reelData.mediaUrl,
-            originalUrl: reelUrl,
-            title: reelData.title,
-            author: reelData.author,
-            onProgress: (progress) {
-              _activeProgress = progress;
-              notifyListeners();
-            },
-          );
-
-          await addItem(reelItem);
-          _activeProgress = null;
-          return;
-        } catch (e) {
-          print('❌ Local API download failed: ${e.toString()}');
-          // Fall through to Instagram service
-        }
+      // Check if this is a story URL
+      if (InstagramUtils.isInstagramStoryUrl(reelUrl)) {
+        print('🚀 STORY DOWNLOAD: Using Local API directly for: $reelUrl');
+        await _downloadStoryFromLocalApi(reelUrl);
+      } else {
+        print('🚀 REEL DOWNLOAD: Using Local API with Instagram service fallback for: $reelUrl');
+        await _downloadReelWithFallback(reelUrl);
       }
 
-      // Fallback to Instagram service
-      print('🔄 FALLBACK: Using Instagram service for download');
-      final reelItem = await _downloadService.downloadInstagramReel(
-        reelUrl: reelUrl,
-        onProgress: (progress) {
-          _activeProgress = progress;
-          notifyListeners();
-        },
-      );
-
-      await addItem(reelItem);
       _activeProgress = null;
     } catch (e) {
       _activeProgress = null;
@@ -328,6 +362,94 @@ class DownloadProvider extends ChangeNotifier {
       _isDownloading = false;
       notifyListeners();
     }
+  }
+
+  /// Downloads story using Local API directly (no scraping fallback)
+  Future<void> _downloadStoryFromLocalApi(String storyUrl) async {
+    try {
+      print('📱 STORY DOWNLOAD: Direct API call to Local API for: $storyUrl');
+
+      // Test if the local API is available
+      final isApiAvailable = await LocalApiService.testConnection();
+      if (!isApiAvailable) {
+        throw Exception(
+          'Local API server is not available. Stories require the Local API service to be running.',
+        );
+      }
+
+      // Get download URL from Local API
+      final reelData = await LocalApiService.fetchInstagramReel(
+        storyUrl,
+        maxRetries: 3,
+        retryDelay: const Duration(seconds: 3),
+      );
+
+      // Download directly from the provided URL
+      final reelItem = await _downloadFromUrl(
+        downloadUrl: reelData.mediaUrl,
+        originalUrl: storyUrl,
+        title: reelData.title,
+        author: reelData.author,
+        onProgress: (progress) {
+          _activeProgress = progress;
+          notifyListeners();
+        },
+      );
+
+      await addItem(reelItem);
+    } catch (e) {
+      print('❌ STORY DOWNLOAD: Local API failed: ${e.toString()}');
+      rethrow;
+    }
+  }
+
+  /// Downloads reel using Local API first with Instagram service fallback
+  Future<void> _downloadReelWithFallback(String reelUrl) async {
+    // Try Local API first
+    final isApiAvailable = await LocalApiService.testConnection();
+
+    if (isApiAvailable) {
+      try {
+        print('🎬 REEL DOWNLOAD: Using Local API for: $reelUrl');
+
+        // Get download URL from Local API
+        final reelData = await LocalApiService.fetchInstagramReel(
+          reelUrl,
+          maxRetries: 2,
+          retryDelay: const Duration(seconds: 3),
+        );
+
+        // Download directly from the provided URL
+        final reelItem = await _downloadFromUrl(
+          downloadUrl: reelData.mediaUrl,
+          originalUrl: reelUrl,
+          title: reelData.title,
+          author: reelData.author,
+          onProgress: (progress) {
+            _activeProgress = progress;
+            notifyListeners();
+          },
+        );
+
+        await addItem(reelItem);
+        return;
+      } catch (e) {
+        print('❌ REEL DOWNLOAD: Local API failed: ${e.toString()}');
+        // Fall through to Instagram service
+      }
+    }
+
+    // Fallback to Instagram service
+    print('🔄 REEL DOWNLOAD: Using Instagram service fallback');
+    final reelItem = await _downloadService.downloadInstagramReel(
+      reelUrl: reelUrl,
+      onProgress: (progress) {
+        _activeProgress = progress;
+        notifyListeners();
+      },
+    );
+
+    await addItem(reelItem);
   }
 
   /// Download directly from a provided URL (used for Local API downloads)

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "742758288527",
+    "project_id": "instagram-reel-downloade-cb5f9",
+    "storage_bucket": "instagram-reel-downloade-cb5f9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:742758288527:android:af9ce79e1d0f7ca181f4fa",
+        "android_client_info": {
+          "package_name": "com.app.instareeldownloader.instareeldownloader"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAyCBSUh62k-ny_sti2QlreX_WY8pfaGqo"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

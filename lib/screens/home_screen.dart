@@ -7,6 +7,7 @@ import '../providers/download_provider.dart';
 import '../services/instagram_utils.dart';
 import 'network_test_screen.dart';
 import 'preview_screen.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -251,6 +252,12 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ],
+            ),
+            ElevatedButton(
+              onPressed: () {
+                FirebaseCrashlytics.instance.crash(); // 👈 test crash
+              },
+              child: const Text('Force Crash'),
             ),
             const SizedBox(height: 16),
             TextFormField(
