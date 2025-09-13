@@ -253,12 +253,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ],
             ),
-            ElevatedButton(
-              onPressed: () {
-                FirebaseCrashlytics.instance.crash(); // 👈 test crash
-              },
-              child: const Text('Force Crash'),
-            ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _ctrl,
