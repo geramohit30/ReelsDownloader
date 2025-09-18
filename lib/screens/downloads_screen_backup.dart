@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,6 +11,9 @@ import 'image_viewer_screen.dart';
 
 // Import for XFile
 import 'package:cross_file/cross_file.dart';
+// Conditional import - stub for non-IO platforms
+import 'downloads_screen_io_stub.dart'
+    if (dart.library.io) 'downloads_screen_io.dart';
 
 class DownloadsScreen extends StatelessWidget {
   const DownloadsScreen({super.key});
@@ -37,9 +41,10 @@ class DownloadsScreen extends StatelessWidget {
             children: [
               _buildHeader(theme, items.length, context),
               Expanded(
-                child: items.isEmpty
-                    ? _buildEmptyState(theme, context)
-                    : _buildDownloadGrid(items, theme, context),
+                child:
+                    items.isEmpty
+                        ? _buildEmptyState(theme, context)
+                        : _buildDownloadGrid(items, theme, context),
               ),
             ],
           ),
@@ -120,7 +125,7 @@ class DownloadsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 24),
             Text(
-              kIsWeb ? 'No downloads yet' : 'No downloads yet',
+              'No downloads yet',
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: theme.colorScheme.onSurface,
@@ -128,9 +133,7 @@ class DownloadsScreen extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Text(
-              kIsWeb 
-                ? 'Downloaded Instagram content will be saved to your browser\'s download folder.\nGo to Home tab to start downloading!'
-                : 'Downloaded Instagram content will appear here.\nGo to Home tab to start downloading!',
+              'Downloaded Instagram content will appear here.\nGo to Home tab to start downloading!',
               textAlign: TextAlign.center,
               style: theme.textTheme.bodyLarge?.copyWith(
                 color: theme.colorScheme.onSurface.withOpacity(0.7),
@@ -160,6 +163,7 @@ class DownloadsScreen extends StatelessWidget {
                 child: InkWell(
                   onTap: () {
                     HapticFeedback.lightImpact();
+                    // This would navigate to home tab
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
                         content: Text('Go to Home tab to download reels'),
@@ -224,7 +228,10 @@ class DownloadsScreen extends StatelessWidget {
   }
 
   Widget _buildVideoCard(dynamic item, ThemeData theme, BuildContext context) {
-    // For web, show that files are downloaded to browser's downloads folder
+    // Use platform-specific file existence check
+    final hasThumb = fileExists(item.thumbnailPath);
+    
+    // Detect content type from file extension
     final isImage = item.filePath.toLowerCase().endsWith('.jpg') || 
                    item.filePath.toLowerCase().endsWith('.jpeg');
     final contentType = isImage ? 'Story' : 'Reel';
@@ -236,53 +243,132 @@ class DownloadsScreen extends StatelessWidget {
       child: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(20),
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              theme.colorScheme.primary.withOpacity(0.8),
-              theme.colorScheme.secondary.withOpacity(0.8),
-            ],
-          ),
+          gradient:
+              hasThumb
+                  ? null
+                  : LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      theme.colorScheme.primary.withOpacity(0.8),
+                      theme.colorScheme.secondary.withOpacity(0.8),
+                    ],
+                  ),
         ),
         child: Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: () {
               HapticFeedback.lightImpact();
+              
               if (kIsWeb) {
-                _showWebInfoDialog(context, item, theme, isImage);
+                // On web, show a dialog explaining the limitation
+                _showWebViewDialog(context, item, theme);
               } else {
-                _navigateToViewer(context, item, isImage);
+                // Navigate to appropriate viewer based on content type
+                if (isImage) {
+                  Navigator.of(context).push(
+                    PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) =>
+                          ImageViewerScreen(itemId: item.id),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        return SlideTransition(
+                          position: animation.drive(
+                            Tween(begin: const Offset(1.0, 0.0), end: Offset.zero),
+                          ),
+                          child: child,
+                        );
+                      },
+                    ),
+                  );
+                } else {
+                  Navigator.of(context).push(
+                    PageRouteBuilder(
+                      pageBuilder: (context, animation, secondaryAnimation) =>
+                          PlayerScreen(itemId: item.id),
+                      transitionsBuilder: (context, animation, secondaryAnimation, child) {
+                        return SlideTransition(
+                          position: animation.drive(
+                            Tween(begin: const Offset(1.0, 0.0), end: Offset.zero),
+                          ),
+                          child: child,
+                        );
+                      },
+                    ),
+                  );
+                }
               }
+            },
             },
             borderRadius: BorderRadius.circular(20),
             child: Stack(
               children: [
-                // Background gradient
+                // Thumbnail or gradient background
+                Positioned.fill(
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: hasThumb
+                        ? buildThumbnail(
+                            item.thumbnailPath,
+                            fit: BoxFit.cover,
+                            errorWidget: Container(
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    theme.colorScheme.primary.withOpacity(0.8),
+                                    theme.colorScheme.secondary.withOpacity(0.8),
+                                  ],
+                                ),
+                              ),
+                              child: Center(
+                                child: Icon(
+                                  isImage ? Icons.image_rounded : Icons.movie_rounded,
+                                  color: Colors.white,
+                                  size: 32,
+                                ),
+                              ),
+                            ),
+                          )
+                        : Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  theme.colorScheme.primary.withOpacity(0.8),
+                                  theme.colorScheme.secondary.withOpacity(0.8),
+                                ],
+                              ),
+                            ),
+                            child: Center(
+                              child: Icon(
+                                isImage ? Icons.image_rounded : Icons.movie_rounded,
+                                size: 48,
+                                color: Colors.white.withOpacity(0.8),
+                              ),
+                            ),
+                          ),
+                  ),
+                ),
+                // Gradient overlay
                 Positioned.fill(
                   child: Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(20),
                       gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
                         colors: [
-                          theme.colorScheme.primary.withOpacity(0.6),
-                          theme.colorScheme.secondary.withOpacity(0.6),
+                          Colors.transparent,
+                          Colors.black.withOpacity(0.7),
                         ],
-                      ),
-                    ),
-                    child: Center(
-                      child: Icon(
-                        isImage ? Icons.image_rounded : Icons.movie_rounded,
-                        size: 48,
-                        color: Colors.white.withOpacity(0.8),
                       ),
                     ),
                   ),
                 ),
-                // Content info
+                // Content type indicator
                 Positioned(
                   top: 12,
                   left: 12,
@@ -313,19 +399,44 @@ class DownloadsScreen extends StatelessWidget {
                     ),
                   ),
                 ),
+                // Play/View button
+                Positioned.fill(
+                  child: Center(
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black26,
+                            blurRadius: 8,
+                            offset: Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Icon(
+                        isImage ? Icons.visibility_rounded : Icons.play_arrow_rounded,
+                        color: Colors.black87,
+                        size: 28,
+                      ),
+                    ),
+                  ),
+                ),
                 // Action buttons
                 Positioned(
                   top: 12,
                   right: 12,
                   child: _buildActionButton(
-                    icon: kIsWeb ? Icons.download_rounded : Icons.share_rounded,
+                    icon: Icons.share_rounded,
                     onPressed: () async {
                       HapticFeedback.lightImpact();
                       if (kIsWeb) {
+                        // On web, show a message about download location
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
                             content: Text(
-                              'File downloaded to your browser\'s download folder',
+                              'Content downloaded to your browser\'s download folder',
                             ),
                             action: SnackBarAction(
                               label: 'OK',
@@ -334,6 +445,7 @@ class DownloadsScreen extends StatelessWidget {
                           ),
                         );
                       } else {
+                        // On mobile/desktop, use normal file sharing
                         await Share.shareXFiles([XFile(item.filePath)]);
                       }
                     },
@@ -347,49 +459,33 @@ class DownloadsScreen extends StatelessWidget {
                     icon: Icons.delete_rounded,
                     onPressed: () => _showDeleteDialog(context, item, theme),
                     theme: theme,
+                    isDestructive: true,
                   ),
                 ),
-                // Bottom info
+                // Date info
                 Positioned(
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      borderRadius: const BorderRadius.only(
-                        bottomLeft: Radius.circular(20),
-                        bottomRight: Radius.circular(20),
-                      ),
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [
-                          Colors.transparent,
-                          Colors.black.withOpacity(0.7),
-                        ],
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          kIsWeb ? 'Downloaded to browser' : (isImage ? 'Tap to view' : 'Tap to play'),
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.white.withOpacity(0.8),
-                            fontWeight: FontWeight.w500,
-                          ),
+                  bottom: 12,
+                  left: 12,
+                  right: 12,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _formatDate(item.createdAt),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w500,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          '${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: Colors.white.withOpacity(0.6),
-                          ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        isImage ? 'Tap to view' : 'Tap to play',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: Colors.white.withOpacity(0.8),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -400,41 +496,69 @@ class DownloadsScreen extends StatelessWidget {
     );
   }
 
-  void _navigateToViewer(BuildContext context, dynamic item, bool isImage) {
-    if (isImage) {
-      Navigator.of(context).push(
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) =>
-              ImageViewerScreen(itemId: item.id),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return SlideTransition(
-              position: animation.drive(
-                Tween(begin: const Offset(1.0, 0.0), end: Offset.zero),
-              ),
-              child: child,
-            );
-          },
+  Widget _buildActionButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    required ThemeData theme,
+    bool isDestructive = false,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: (isDestructive ? Colors.red : theme.colorScheme.surface)
+            .withOpacity(0.9),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(8),
+            child: Icon(
+              icon,
+              size: 20,
+              color: isDestructive ? Colors.white : theme.colorScheme.onSurface,
+            ),
+          ),
         ),
-      );
+      ),
+    );
+  }
+
+  int _getCrossAxisCount(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    if (width > 1200) return 4;
+    if (width > 800) return 3;
+    return 2;
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final difference = now.difference(date);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays}d ago';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours}h ago';
+    } else if (difference.inMinutes > 0) {
+      return '${difference.inMinutes}m ago';
     } else {
-      Navigator.of(context).push(
-        PageRouteBuilder(
-          pageBuilder: (context, animation, secondaryAnimation) =>
-              PlayerScreen(itemId: item.id),
-          transitionsBuilder: (context, animation, secondaryAnimation, child) {
-            return SlideTransition(
-              position: animation.drive(
-                Tween(begin: const Offset(1.0, 0.0), end: Offset.zero),
-              ),
-              child: child,
-            );
-          },
-        ),
-      );
+      return 'Just now';
     }
   }
 
-  void _showWebInfoDialog(BuildContext context, dynamic item, ThemeData theme, bool isImage) {
+  void _showWebViewDialog(BuildContext context, dynamic item, ThemeData theme) {
+    final isImage = item.filePath.toLowerCase().endsWith('.jpg') || 
+                   item.filePath.toLowerCase().endsWith('.jpeg');
+    
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -448,7 +572,7 @@ class DownloadsScreen extends StatelessWidget {
               color: theme.colorScheme.primary,
             ),
             const SizedBox(width: 12),
-            Text('${isImage ? "Story" : "Reel"} Downloaded'),
+            Text(isImage ? 'Story Downloaded' : 'Reel Downloaded'),
           ],
         ),
         content: Column(
@@ -496,89 +620,106 @@ class DownloadsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildActionButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-    required ThemeData theme,
-  }) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.5),
-        shape: BoxShape.circle,
-      ),
-      child: IconButton(
-        onPressed: onPressed,
-        icon: Icon(icon, color: Colors.white, size: 20),
-        iconSize: 36,
-        padding: const EdgeInsets.all(8),
-      ),
-    );
-  }
-
   void _showDeleteDialog(BuildContext context, dynamic item, ThemeData theme) {
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        title: Row(
-          children: [
-            Icon(Icons.delete_rounded, color: Colors.red),
-            const SizedBox(width: 12),
-            const Text('Delete Item'),
-          ],
-        ),
-        content: Text(
-          kIsWeb 
-            ? 'Remove this item from the list? The file has already been downloaded to your device.'
-            : 'Are you sure you want to delete this item? This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Cancel'),
-          ),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.red,
-              borderRadius: BorderRadius.circular(12),
+      builder:
+          (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20),
             ),
-            child: TextButton(
-              onPressed: () async {
-                Navigator.pop(ctx);
-                await context.read<DownloadProvider>().deleteItem(item.id);
-                HapticFeedback.lightImpact();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(kIsWeb ? 'Item removed from list' : 'Video deleted successfully'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
-              },
-              child: const Text('Delete', style: TextStyle(color: Colors.white)),
+            title: Row(
+              children: [
+                Icon(Icons.delete_rounded, color: Colors.red),
+                const SizedBox(width: 12),
+                const Text('Delete Video'),
+              ],
             ),
+            content: const Text(
+              'Are you sure you want to delete this video? This action cannot be undone.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel'),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.red,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: TextButton(
+                  onPressed: () async {
+                    Navigator.pop(ctx);
+                    await context.read<DownloadProvider>().deleteItem(item.id);
+                    HapticFeedback.lightImpact();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Video deleted')),
+                      );
+                    }
+                  },
+                  child: const Text(
+                    'Delete',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
     );
   }
 
   void _showSortOptions(BuildContext context) {
-    // Implement sort options
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Sort options coming soon!'),
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder:
+          (context) => Container(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withOpacity(0.3),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Sort Options',
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 20),
+                _buildSortOption(context, 'Recent First', Icons.access_time),
+                _buildSortOption(context, 'Oldest First', Icons.history),
+                _buildSortOption(context, 'Name A-Z', Icons.sort_by_alpha),
+                const SizedBox(height: 20),
+              ],
+            ),
+          ),
     );
   }
 
-  int _getCrossAxisCount(BuildContext context) {
-    final width = MediaQuery.of(context).size.width;
-    if (width < 600) return 2;
-    if (width < 900) return 3;
-    return 4;
+  Widget _buildSortOption(BuildContext context, String title, IconData icon) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      onTap: () {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Sorted by: $title')));
+      },
+    );
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +8,10 @@ import '../providers/download_provider.dart';
 import '../services/instagram_utils.dart';
 import 'network_test_screen.dart';
 import 'preview_screen.dart';
+
+// Conditional import for platform-specific file operations
+import 'downloads_screen_io_stub.dart'
+    if (dart.library.io) 'downloads_screen_io.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -149,6 +154,10 @@ class _HomeScreenState extends State<HomeScreen> {
                         ..._buildProgressIndicator(theme, progress, provider),
                       const SizedBox(height: 40),
                       _buildRecentDownloads(theme, provider),
+                      if (kIsWeb) ...[  
+                        const SizedBox(height: 24),
+                        _buildWebDownloadInfo(theme),
+                      ],
                     ],
                   ),
                 ),
@@ -207,7 +216,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Download Instagram Reels effortlessly',
+                      kIsWeb 
+                        ? 'Download Instagram Reels & Stories to your browser'
+                        : 'Download Instagram Reels effortlessly',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: Colors.white.withOpacity(0.9),
                       ),
@@ -510,9 +521,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 separatorBuilder: (_, __) => const SizedBox(width: 12),
                 itemBuilder: (_, index) {
                   final item = provider.items[index];
-                  final hasThumb =
-                      item.thumbnailPath != null &&
-                          File(item.thumbnailPath!).existsSync();
+                  final hasThumb = fileExists(item.thumbnailPath);
                   return Container(
                     width: 60,
                     decoration: BoxDecoration(
@@ -534,9 +543,21 @@ class _HomeScreenState extends State<HomeScreen> {
                             fit: StackFit.expand,
                             children: [
                               if (hasThumb)
-                                Image.file(
-                                  File(item.thumbnailPath!),
+                                buildThumbnail(
+                                  item.thumbnailPath,
                                   fit: BoxFit.cover,
+                                  errorWidget: Container(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          theme.colorScheme.primary.withOpacity(0.8),
+                                          theme.colorScheme.secondary.withOpacity(0.8),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 )
                               else
                                 Container(
@@ -576,6 +597,49 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   );
                 },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWebDownloadInfo(ThemeData theme) {
+    return Card(
+      elevation: 0.5,
+      color: theme.colorScheme.primary.withOpacity(0.05),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.cloud_download_rounded,
+                  color: theme.colorScheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Web Download Info',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              '• Downloads are saved to your browser\'s default download folder\n'
+              '• Files will be automatically named with timestamps\n'
+              '• For best experience, allow browser downloads when prompted\n'
+              '• Some browsers may ask for permission before downloading',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.8),
+                height: 1.4,
               ),
             ),
           ],

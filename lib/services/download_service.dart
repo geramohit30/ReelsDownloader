@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import '../models/reel_item.dart';
 import 'instagram_service.dart';
 import 'instagram_utils.dart';
 import 'thumbnail_service.dart';
+import 'web_download_service.dart';
 
 class DownloadService {
   final InstagramService _instagramService = InstagramService();
@@ -58,12 +60,25 @@ class DownloadService {
     // Create ReelItem (works for both videos and images)
     String? thumbnailPath;
     try {
-      if (isVideo) {
-        // Generate thumbnail from video
-        thumbnailPath = await _thumbnailService.generate(filePath);
+      if (kIsWeb) {
+        // On web, we can't generate thumbnails easily, so we'll use the original URL or a placeholder
+        if (isVideo) {
+          // For videos on web, we can't generate thumbnails easily
+          // We'll use the source URL as a reference or null
+          thumbnailPath = null;
+        } else {
+          // For images, use the web download path
+          thumbnailPath = filePath;
+        }
       } else {
-        // For images, use the image itself as thumbnail
-        thumbnailPath = filePath;
+        // Mobile/Desktop thumbnail generation
+        if (isVideo) {
+          // Generate thumbnail from video
+          thumbnailPath = await _thumbnailService.generate(filePath);
+        } else {
+          // For images, use the image itself as thumbnail
+          thumbnailPath = filePath;
+        }
       }
     } catch (_) {
       thumbnailPath = null;
@@ -78,31 +93,32 @@ class DownloadService {
     );
   }
 
-  /// Downloads media file to app directory
+  /// Downloads media file to app directory (mobile) or triggers browser download (web)
   /// Returns (filePath)
   Future<String> downloadToAppDir({
     required Uri mediaUrl,
     required void Function(double progress) onProgress, // 0..1
     String? suggestedName,
   }) async {
-    // For web environment, we need to handle this differently
-    // Check if we're on web by checking if dart:io is available
-    bool isWeb = false;
-    try {
-      // This will throw on web since dart:io is not available
-      Directory.current;
-    } catch (_) {
-      isWeb = true;
-    }
-
-    if (isWeb) {
-      // On web, we can't save to app directory, so we'll save to a temporary location
-      // and provide a download link instead
-      throw UnsupportedError(
-        'Direct file download not supported in web environment. Please use the mobile app for full functionality.',
+    // Check if we're running on web
+    if (kIsWeb) {
+      print('🌐 WEB MODE: Using browser download for ${suggestedName ?? 'media'}');
+      
+      // Sanitize filename for web
+      final fileName = suggestedName ?? 'media_${DateTime.now().millisecondsSinceEpoch}';
+      final safeFileName = WebDownloadService.sanitizeFileName(fileName);
+      
+      // Use web download service
+      return await WebDownloadService.downloadMedia(
+        mediaUrl: mediaUrl.toString(),
+        fileName: safeFileName,
+        onProgress: onProgress,
       );
     }
 
+    // Mobile/Desktop implementation
+    print('📱 MOBILE MODE: Saving to app directory for ${suggestedName ?? 'media'}');
+    
     final dir = await getApplicationDocumentsDirectory();
     final reelsDir = Directory('${dir.path}/reels');
     if (!await reelsDir.exists()) await reelsDir.create(recursive: true);

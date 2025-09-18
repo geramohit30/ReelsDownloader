@@ -75,6 +75,33 @@ class InstagramUtils {
         // && (uri.path.contains('/p/') || uri.path.contains('/reel/'));
   }
 
+  /// Determines if the URL is specifically a reel URL
+  static bool isReelUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return false;
+
+    return (uri.host.contains('instagram.com') || uri.host == 'instagr.am') &&
+           uri.path.contains('/reel/');
+  }
+
+  /// Determines if the URL is a story URL
+  static bool isStoryUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return false;
+
+    return (uri.host.contains('instagram.com') || uri.host == 'instagr.am') &&
+           uri.path.contains('/stories/');
+  }
+
+  /// Determines if the URL is a post URL (not reel or story)
+  static bool isPostUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return false;
+
+    return (uri.host.contains('instagram.com') || uri.host == 'instagr.am') &&
+           (uri.path.contains('/p/') || uri.path.contains('/tv/'));
+  }
+
   /// Generates a CSRF token (simplified version)
   static String generateCsrfToken() {
     // In a real implementation, this should be extracted from cookies
