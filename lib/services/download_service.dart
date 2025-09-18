@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import '../models/reel_item.dart';
@@ -28,7 +27,7 @@ class DownloadService {
     String mediaUrl;
     String fileExtension;
     bool isVideo;
-    
+
     if (postData.isVideo && postData.videoUrl != null) {
       // Video content (reels)
       mediaUrl = postData.videoUrl!;
@@ -86,6 +85,24 @@ class DownloadService {
     required void Function(double progress) onProgress, // 0..1
     String? suggestedName,
   }) async {
+    // For web environment, we need to handle this differently
+    // Check if we're on web by checking if dart:io is available
+    bool isWeb = false;
+    try {
+      // This will throw on web since dart:io is not available
+      Directory.current;
+    } catch (_) {
+      isWeb = true;
+    }
+
+    if (isWeb) {
+      // On web, we can't save to app directory, so we'll save to a temporary location
+      // and provide a download link instead
+      throw UnsupportedError(
+        'Direct file download not supported in web environment. Please use the mobile app for full functionality.',
+      );
+    }
+
     final dir = await getApplicationDocumentsDirectory();
     final reelsDir = Directory('${dir.path}/reels');
     if (!await reelsDir.exists()) await reelsDir.create(recursive: true);

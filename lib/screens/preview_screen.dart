@@ -23,10 +23,13 @@ class _PreviewScreenState extends State<PreviewScreen> {
   VideoPlayerController? _controller;
   bool _isInitializing = false;
   bool _initTried = false;
+  bool _isWeb = false;
 
   @override
   void initState() {
     super.initState();
+    // Check if we're running on web
+    _isWeb = identical(0, 0.0); // This is a hack to detect web platform
     _maybeInitVideo();
   }
 
@@ -40,6 +43,17 @@ class _PreviewScreenState extends State<PreviewScreen> {
       _isInitializing = true;
     });
     try {
+      // For web, we can only play network URLs, not local files
+      if (_isWeb &&
+          !(videoUrl.startsWith('http://') ||
+              videoUrl.startsWith('https://'))) {
+        // Skip video initialization for local files on web
+        setState(() {
+          _isInitializing = false;
+        });
+        return;
+      }
+
       final c = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
       await c.initialize();
       c.setLooping(true);
@@ -61,6 +75,32 @@ class _PreviewScreenState extends State<PreviewScreen> {
   }
 
   Future<void> _startDownload(BuildContext context) async {
+    // Show warning for web users about download limitations
+    if (_isWeb) {
+      final shouldContinue = await showDialog<bool>(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: const Text('Download Limitation'),
+              content: const Text(
+                'Downloading videos on web browsers has limitations. The video will be downloaded but playback may not work in the browser. For full functionality, please use the mobile app.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: const Text('Cancel'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: const Text('Continue'),
+                ),
+              ],
+            ),
+      );
+
+      if (shouldContinue != true) return;
+    }
+
     final provider = context.read<DownloadProvider>();
     try {
       setState(() {
@@ -114,6 +154,29 @@ class _PreviewScreenState extends State<PreviewScreen> {
                 const SizedBox(height: 16),
                 _buildProgress(theme, progress, provider),
               ],
+              if (_isWeb) ...[
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.orange, size: 20),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Note: Video playback is limited in web browsers. For full functionality, use the mobile app.',
+                          style: TextStyle(fontSize: 12, color: Colors.orange),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -128,7 +191,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
     final hasVideoUrl = widget.postData.videoUrl?.isNotEmpty ?? false;
 
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 60)  ,
+      margin: EdgeInsets.symmetric(horizontal: 60),
       decoration: BoxDecoration(
         // color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
         borderRadius: BorderRadius.circular(20),
@@ -175,7 +238,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                       ],
                     ),
                   )
-                else if (hasVideoUrl)
+                else if (hasVideoUrl && !_isWeb)
                   // Clean placeholder when a video URL exists; avoid showing the image first
                   Container(
                     color: theme.colorScheme.surfaceVariant,
@@ -242,7 +305,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                     ),
                   ),
 
-                if (!hasController && hasVideoUrl)
+                if (!hasController && hasVideoUrl && !_isWeb)
                   Positioned(
                     right: 8,
                     bottom: 8,
