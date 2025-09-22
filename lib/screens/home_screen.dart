@@ -8,6 +8,8 @@ import '../providers/download_provider.dart';
 import '../services/instagram_utils.dart';
 import 'network_test_screen.dart';
 import 'preview_screen.dart';
+import 'downloads_screen.dart';
+import '../main.dart';
 
 // Conditional import for platform-specific file operations
 import 'downloads_screen_io_stub.dart'
@@ -30,9 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String? _validateUrl(String? v) {
-    if (v == null || v
-        .trim()
-        .isEmpty) return 'Paste a reel URL';
+    if (v == null || v.trim().isEmpty) return 'Paste a reel URL';
     final s = v.trim();
     if (!InstagramUtils.isInstagramUrl(s)) {
       return 'Please enter a valid Instagram reel or story URL';
@@ -70,9 +70,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final isNetworkError =
           e.toString().contains('SocketException') ||
-              e.toString().contains('Failed host lookup') ||
-              e.toString().contains('Network error') ||
-              e.toString().contains('Local API server');
+          e.toString().contains('Failed host lookup') ||
+          e.toString().contains('Network error') ||
+          e.toString().contains('Local API server');
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -138,8 +138,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   children: AnimationConfiguration.toStaggeredList(
                     duration: const Duration(milliseconds: 400),
                     childAnimationBuilder:
-                        (widget) =>
-                        SlideAnimation(
+                        (widget) => SlideAnimation(
                           verticalOffset: 50.0,
                           child: FadeInAnimation(child: widget),
                         ),
@@ -154,7 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ..._buildProgressIndicator(theme, progress, provider),
                       const SizedBox(height: 40),
                       _buildRecentDownloads(theme, provider),
-                      if (kIsWeb) ...[  
+                      if (kIsWeb) ...[
                         const SizedBox(height: 24),
                         _buildWebDownloadInfo(theme),
                       ],
@@ -216,9 +215,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      kIsWeb 
-                        ? 'Download Instagram Reels & Stories to your browser'
-                        : 'Download Instagram Reels effortlessly',
+                      kIsWeb
+                          ? 'Download Instagram Reels & Stories to your browser'
+                          : 'Download Instagram Reels effortlessly',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: Colors.white.withOpacity(0.9),
                       ),
@@ -285,17 +284,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: theme.colorScheme.primary,
                     ),
                     onPressed:
-                    isBusy
-                        ? null
-                        : () async {
-                      HapticFeedback.lightImpact();
-                      final data = await Clipboard.getData(
-                        'text/plain',
-                      );
-                      if (data?.text != null) {
-                        _ctrl.text = data!.text!.trim();
-                      }
-                    },
+                        isBusy
+                            ? null
+                            : () async {
+                              HapticFeedback.lightImpact();
+                              final data = await Clipboard.getData(
+                                'text/plain',
+                              );
+                              if (data?.text != null) {
+                                _ctrl.text = data!.text!.trim();
+                              }
+                            },
                   ),
                 ),
               ),
@@ -316,21 +315,23 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDownloadButton(ThemeData theme,
-      bool isBusy,
-      DownloadProvider provider,) {
+  Widget _buildDownloadButton(
+    ThemeData theme,
+    bool isBusy,
+    DownloadProvider provider,
+  ) {
     return Container(
       width: double.infinity,
       height: 56,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors:
-          isBusy
-              ? [
-            theme.colorScheme.onSurface.withOpacity(0.4),
-            theme.colorScheme.onSurface.withOpacity(0.5),
-          ]
-              : [theme.colorScheme.primary, theme.colorScheme.secondary],
+              isBusy
+                  ? [
+                    theme.colorScheme.onSurface.withOpacity(0.4),
+                    theme.colorScheme.onSurface.withOpacity(0.5),
+                  ]
+                  : [theme.colorScheme.primary, theme.colorScheme.secondary],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
@@ -346,12 +347,12 @@ class _HomeScreenState extends State<HomeScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap:
-          isBusy
-              ? null
-              : () {
-            HapticFeedback.mediumImpact();
-            _onDownload();
-          },
+              isBusy
+                  ? null
+                  : () {
+                    HapticFeedback.mediumImpact();
+                    _onDownload();
+                  },
           borderRadius: BorderRadius.circular(16),
           child: Center(
             child: Row(
@@ -376,8 +377,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(
                   isBusy
                       ? (provider.isFetchingPreview
-                      ? 'Fetching...'
-                      : 'Processing...')
+                          ? 'Fetching...'
+                          : 'Processing...')
                       : 'Download Reel',
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: Colors.white,
@@ -392,9 +393,11 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  List<Widget> _buildProgressIndicator(ThemeData theme,
-      double? progress,
-      DownloadProvider provider,) {
+  List<Widget> _buildProgressIndicator(
+    ThemeData theme,
+    double? progress,
+    DownloadProvider provider,
+  ) {
     return [
       const SizedBox(height: 24),
       Card(
@@ -498,13 +501,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 const Spacer(),
                 TextButton(
                   onPressed: () {
-                    // This would switch to downloads tab
-                    // For now, just show a message
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Go to Downloads tab to see all'),
-                      ),
-                    );
+                    // Switch to downloads tab instead of pushing new screen
+                    final rootState =
+                        context.findAncestorStateOfType<RootState>();
+                    rootState?.switchToTab(
+                      1,
+                    ); // 1 is the index for downloads tab
                   },
                   child: const Text('View All'),
                 ),
@@ -515,9 +517,7 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 80,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                itemCount: provider.items
-                    .take(5)
-                    .length,
+                itemCount: provider.items.take(5).length,
                 separatorBuilder: (_, __) => const SizedBox(width: 12),
                 itemBuilder: (_, index) {
                   final item = provider.items[index];
@@ -552,8 +552,11 @@ class _HomeScreenState extends State<HomeScreen> {
                                         begin: Alignment.topLeft,
                                         end: Alignment.bottomRight,
                                         colors: [
-                                          theme.colorScheme.primary.withOpacity(0.8),
-                                          theme.colorScheme.secondary.withOpacity(0.8),
+                                          theme.colorScheme.primary.withOpacity(
+                                            0.8,
+                                          ),
+                                          theme.colorScheme.secondary
+                                              .withOpacity(0.8),
                                         ],
                                       ),
                                     ),

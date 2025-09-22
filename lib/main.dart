@@ -152,12 +152,17 @@ class MyApp extends StatelessWidget {
 class _Root extends StatefulWidget {
   const _Root({super.key});
   @override
-  State<_Root> createState() => _RootState();
+  State<_Root> createState() => RootState();
 }
 
-class _RootState extends State<_Root> {
+class RootState extends State<_Root> {
   int _index = 0;
   final _screens = const [HomeScreen(), DownloadsScreen(), SettingsScreen()];
+
+  // Method to switch to a specific tab
+  void switchToTab(int index) {
+    setState(() => _index = index);
+  }
 
   @override
   Widget build(BuildContext context) {
