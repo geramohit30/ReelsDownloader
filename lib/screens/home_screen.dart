@@ -637,7 +637,6 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 12),
             Text(
               '• Downloads are saved to your browser\'s default download folder\n'
-              '• Files will be automatically named with timestamps\n'
               '• For best experience, allow browser downloads when prompted\n'
               '• Some browsers may ask for permission before downloading',
               style: theme.textTheme.bodySmall?.copyWith(

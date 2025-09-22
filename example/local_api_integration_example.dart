@@ -21,7 +21,7 @@ class LocalApiIntegrationExample {
 
     // Step 1: Show what the Flutter app sends (matches your cURL exactly)
     print('\n📤 FLUTTER APP REQUEST (matches your cURL):');
-    print('POST http://localhost:3000/api/insta/reels');
+    print('POST https://instagramreeldownload.com/api/insta/reels');
     print('Content-Type: application/json');
     print('Body: ${jsonEncode({"url": testUrl})}');
 

@@ -83,7 +83,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
             (context) => AlertDialog(
               title: const Text('Download Limitation'),
               content: const Text(
-                'Downloading videos on web browsers has limitations. The video will be downloaded but playback may not work in the browser. For full functionality, please use the mobile app.',
+                'Downloading videos on web browsers has limitations. The video will be downloaded in the browser. For full functionality, please use the mobile app.',
               ),
               actions: [
                 TextButton(
@@ -153,29 +153,6 @@ class _PreviewScreenState extends State<PreviewScreen> {
               if (isBusy) ...[
                 const SizedBox(height: 16),
                 _buildProgress(theme, progress, provider),
-              ],
-              if (_isWeb) ...[
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.orange.withOpacity(0.3)),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.orange, size: 20),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Note: Video playback is limited in web browsers. For full functionality, use the mobile app.',
-                          style: TextStyle(fontSize: 12, color: Colors.orange),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
               ],
             ],
           ),
