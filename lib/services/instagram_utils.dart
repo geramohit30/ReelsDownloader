@@ -93,6 +93,30 @@ class InstagramUtils {
            uri.path.contains('/stories/');
   }
 
+  /// Extracts base story URL from a complete story URL
+  /// Example: https://www.instagram.com/stories/firstpost/3728742100394513683?utm_source=ig_story_item_share&igsh=YjMwa203cGh2enRw
+  /// Returns: https://www.instagram.com/stories/firstpost
+  static String extractBaseStoryUrl(String url) {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return url;
+
+    // Check if it's a story URL
+    if (!isStoryUrl(url)) {
+      return url; // Return original if not a story URL
+    }
+
+    // Extract path segments: ['stories', 'username', 'storyId']
+    final pathSegments = uri.pathSegments;
+    
+    if (pathSegments.length >= 2 && pathSegments[0] == 'stories') {
+      final username = pathSegments[1];
+      // Reconstruct base story URL without story ID and query parameters
+      return '${uri.scheme}://${uri.host}/stories/$username';
+    }
+
+    return url; // Return original if parsing fails
+  }
+
   /// Determines if the URL is a post URL (not reel or story)
   static bool isPostUrl(String url) {
     final uri = Uri.tryParse(url);

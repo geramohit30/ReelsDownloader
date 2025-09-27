@@ -8,27 +8,36 @@ import '../models/instagram_reel_data.dart';
 class LocalApiService {
   static const String _baseUrl = 'https://instagramreeldownload.com';
   static const Duration _defaultTimeout = Duration(seconds: 60);
+  static const Duration _defaultRetryDelay = Duration(seconds: 4);
+  static const Duration _rateLimitDelay = Duration(seconds: 4);
 
   /// HTTP client instance for making requests
   static final http.Client _client = http.Client();
+  
+  /// Last request timestamp for rate limiting
+  static DateTime? _lastRequestTime;
 
-  /// Get Instagram reel data from local API endpoint with retry logic
+  /// Get Instagram reel data from local API endpoint with retry logic and rate limiting
   ///
   /// [url] - Instagram reel URL to fetch data for
   /// [maxRetries] - Maximum number of retry attempts (default: 3)
-  /// [retryDelay] - Delay between retries (default: 2 seconds)
+  /// [retryDelay] - Delay between retries (default: 4 seconds)
   /// Returns [InstagramReelData] containing the reel information and media URL
   /// Throws [LocalApiException] if the request fails
   static Future<InstagramReelData> fetchInstagramReel(
     String url, {
     int maxRetries = 3,
-    Duration retryDelay = const Duration(seconds: 2),
+    Duration retryDelay = _defaultRetryDelay,
   }) async {
+    // Rate limiting: ensure 4 seconds between requests
+    await _enforceRateLimit();
+    
     print('🚀 LOCAL API: Fetching Instagram reel data (Attempt 1/${maxRetries + 1})');
     print('   • Target URL: $url');
     print('   • API Endpoint: $_baseUrl/api/insta/reels');
     print('   • Max Retries: $maxRetries');
     print('   • Retry Delay: ${retryDelay.inSeconds}s');
+    print('   • Rate Limit Delay: ${_rateLimitDelay.inSeconds}s');
 
     LocalApiException? lastException;
 
@@ -290,14 +299,24 @@ class LocalApiService {
   static bool _isValidInstagramUrl(String url) {
     // Enhanced regex patterns to support multiple Instagram URL formats
     final patterns = [
-      // Standard reels, posts, and TV: /reel/ID, /p/ID, /tv/ID
+      // Standard reels, posts, and TV with username: /username/reel/ID, /username/p/ID, /username/tv/ID
+      RegExp(
+        r'^https?://(www\.)?instagram\.com/[A-Za-z0-9_.]+/(reel|p|tv)/[A-Za-z0-9_-]+/?(\?.*)?$',
+        caseSensitive: false,
+      ),
+      // Direct reels, posts, and TV: /reel/ID, /p/ID, /tv/ID
       RegExp(
         r'^https?://(www\.)?instagram\.com/(reel|p|tv)/[A-Za-z0-9_-]+/?(\?.*)?$',
         caseSensitive: false,
       ),
-      // Stories format: /stories/username/storyId
+      // Stories format with story ID: /stories/username/storyId
       RegExp(
         r'^https?://(www\.)?instagram\.com/stories/[A-Za-z0-9_.]+/[0-9]+/?(\?.*)?$',
+        caseSensitive: false,
+      ),
+      // Stories base format: /stories/username (for API-only strategy)
+      RegExp(
+        r'^https?://(www\.)?instagram\.com/stories/[A-Za-z0-9_.]+/?$',
         caseSensitive: false,
       ),
       // Alternative stories format: /stories/highlights/ID
@@ -317,9 +336,11 @@ class LocalApiService {
     
     print('❌ URL VALIDATION: No matching pattern for $url');
     print('   • Supported formats:');
+    print('   • Reels: https://instagram.com/username/reel/ID');
     print('   • Reels: https://instagram.com/reel/ID');
     print('   • Posts: https://instagram.com/p/ID');
     print('   • Stories: https://instagram.com/stories/username/storyId');
+    print('   • Stories Base: https://instagram.com/stories/username');
     print('   • Highlights: https://instagram.com/stories/highlights/ID');
     
     return false;
@@ -337,6 +358,14 @@ class LocalApiService {
       return storyMatch.group(2)!; // Return the story ID (numeric)
     }
     
+    // For base story URLs: /stories/username (without story ID)
+    final baseStoryMatch = RegExp(
+      r'/stories/([A-Za-z0-9_.]+)/?$',
+    ).firstMatch(url);
+    if (baseStoryMatch != null) {
+      return baseStoryMatch.group(1)!; // Return the username as ID for base stories
+    }
+    
     // For highlights: /stories/highlights/ID - extract the highlight ID
     final highlightMatch = RegExp(
       r'/stories/highlights/([0-9]+)',
@@ -345,7 +374,15 @@ class LocalApiService {
       return highlightMatch.group(1)!; // Return the highlight ID
     }
     
-    // For reels, posts, TV: /reel/ID, /p/ID, /tv/ID - extract the content ID
+    // For reels, posts, TV with username: /username/reel/ID, /username/p/ID, /username/tv/ID
+    final userContentMatch = RegExp(
+      r'/([A-Za-z0-9_.]+)/(reel|p|tv)/([A-Za-z0-9_-]+)',
+    ).firstMatch(url);
+    if (userContentMatch != null) {
+      return userContentMatch.group(3)!; // Return the content ID
+    }
+    
+    // For direct reels, posts, TV: /reel/ID, /p/ID, /tv/ID - extract the content ID
     final contentMatch = RegExp(
       r'/(reel|p|tv)/([A-Za-z0-9_-]+)',
     ).firstMatch(url);
@@ -411,6 +448,21 @@ class LocalApiService {
   static void dispose() {
     _client.close();
   }
+  
+  /// Enforce rate limiting by ensuring a minimum delay between requests
+  static Future<void> _enforceRateLimit() async {
+    if (_lastRequestTime != null) {
+      final elapsed = DateTime.now().difference(_lastRequestTime!);
+      final remaining = _rateLimitDelay - elapsed;
+      
+      if (remaining > Duration.zero) {
+        print('⏳ RATE LIMIT: Waiting ${remaining.inMilliseconds}ms before next request');
+        await Future.delayed(remaining);
+      }
+    }
+    
+    _lastRequestTime = DateTime.now();
+  }
 }
 
 /// Custom exception for Local API errors
@@ -436,9 +488,9 @@ class LocalApiException implements Exception {
   String get userFriendlyMessage {
     switch (type) {
       case LocalApiErrorType.connectionError:
-        return 'Cannot connect to the local API server. Please ensure the server is running on localhost:3000.';
+        return 'Cannot connect to the local API server. Please ensure the server is running.';
       case LocalApiErrorType.timeout:
-        return 'The request timed out. The local API server may be slow or unresponsive.';
+        return 'The request timed out. The API server may be slow or unresponsive.';
       case LocalApiErrorType.invalidUrl:
         return 'Please provide a valid Instagram reel or story URL.';
       case LocalApiErrorType.noMediaFound:
@@ -446,19 +498,24 @@ class LocalApiException implements Exception {
       case LocalApiErrorType.rateLimited:
         return 'Too many requests. Please wait a moment and try again.';
       case LocalApiErrorType.serverError:
-        return 'The local API server encountered an error. Please check the server logs.';
+        return 'The API server encountered an error. Please check the server logs.';
       case LocalApiErrorType.badRequest:
         return 'Invalid request. Please check the Instagram URL format (supports reels and stories).';
       case LocalApiErrorType.unauthorized:
-        return 'Authentication required for the local API server.';
+        return 'Authentication required for the API server.';
       case LocalApiErrorType.forbidden:
-        return 'Access denied by the local API server.';
+        return 'Access denied by the API server.';
       case LocalApiErrorType.notFound:
-        return 'The requested resource was not found on the local API server.';
+        return 'The requested resource was not found on the API server.';
       case LocalApiErrorType.parseError:
-        return 'Failed to parse the response from the local API server.';
+        return 'Failed to parse the response from the API server.';
       case LocalApiErrorType.unknown:
       default:
+        // Check if this might be a CORS error
+        if (message.contains('CORS') || message.contains('Access-Control')) {
+          return 'CORS policy error: The API server is not configured to accept requests from this origin. '
+              'This is a common issue during development. Please contact the API administrator to configure CORS headers.';
+        }
         return 'An unexpected error occurred: $message';
     }
   }

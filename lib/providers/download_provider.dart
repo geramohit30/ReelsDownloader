@@ -273,11 +273,19 @@ class DownloadProvider extends ChangeNotifier {
         return await _fetchFromApiOnly(reelUrl);
       }
 
-      // For reels, use the existing strategy (Instagram service first, then API fallback)
-      print('🎬 REEL CONTENT: Using Instagram service with API fallback');
+      // For reels, use different strategies based on platform
+      print('🎬 REEL CONTENT: Using platform-appropriate strategy');
       
+      // On web, always use Local API first to avoid CORS issues
+      if (kIsWeb) {
+        print('🌐 WEB PLATFORM: Using Local API for reel preview to avoid CORS');
+        return await _fetchFromApiOnly(reelUrl);
+      }
+      
+      // On mobile/desktop, use Instagram service first, then API fallback
+      print('📱 MOBILE/DESKTOP: Using Instagram service with API fallback');
       try {
-        // First try the Instagram service (primary method for reels)
+        // First try the Instagram service (primary method for reels on mobile)
         final postData = await _instagramService.getPostDataOptimized(reelUrl);
         print('✅ PRIMARY SUCCESS: Instagram service returned data for reel preview');
         return postData;
@@ -325,9 +333,7 @@ class DownloadProvider extends ChangeNotifier {
 
     try {
       // Check if we're running on web
-      bool isWeb = identical(0, 0.0); // Hack to detect web platform
-
-      if (isWeb) {
+      if (kIsWeb) {
         // On web, we'll use a different approach
         await _downloadReelForWeb(reelUrl);
         return;
@@ -434,9 +440,18 @@ class DownloadProvider extends ChangeNotifier {
     try {
       print('🌐 WEB DOWNLOAD: Using Local API for: $reelUrl');
 
-      // Get download URL from Local API
+      // For story URLs, extract the base URL (remove story ID and query params)
+      String apiUrl = reelUrl;
+      if (InstagramUtils.isStoryUrl(reelUrl)) {
+        apiUrl = InstagramUtils.extractBaseStoryUrl(reelUrl);
+        print('📋 STORY URL PROCESSING:');
+        print('   • Original: $reelUrl');
+        print('   • Base URL: $apiUrl');
+      }
+
+      // Get download URL from Local API using the processed URL
       final reelData = await LocalApiService.fetchInstagramReel(
-        reelUrl,
+        apiUrl,
         maxRetries: 2,
         retryDelay: const Duration(seconds: 3),
       );
@@ -459,7 +474,7 @@ class DownloadProvider extends ChangeNotifier {
       // Create a reel item for the downloads list
       final reelItem = ReelItem(
         id: shortcode,
-        sourceUrl: reelUrl,
+        sourceUrl: reelUrl, // Keep original URL for reference
         filePath: filePath, // This will be a web-download:// path
         createdAt: DateTime.now(),
         thumbnailPath: reelData.thumbnailUrl,
@@ -475,13 +490,16 @@ class DownloadProvider extends ChangeNotifier {
       print('❌ WEB DOWNLOAD FAILED: ${e.toString()}');
       
       // Provide helpful error message for web users
-      if (e.toString().contains('CORS') || e.toString().contains('blocked')) {
-        _errorMessage = 'Download blocked by browser security.\n\n'
-            'This can happen due to CORS restrictions. Try:\n'
-            '1. Using a different browser\n'
-            '2. Disabling ad blockers temporarily\n'
-            '3. Trying again in an incognito/private window\n\n'
-            'The download URL will be opened in a new tab as a fallback.';
+      if (e.toString().contains('CORS') || e.toString().contains('blocked') || 
+          (e is LocalApiException && e.message.contains('CORS'))) {
+        _errorMessage = 'CORS Policy Error\n\n'
+            'The Instagram Reels API server is not configured to accept requests from your local development server.\n\n'
+            'Possible solutions:\n'
+            '1. Contact the API administrator to configure CORS headers\n'
+            '2. Use a CORS proxy service during development\n'
+            '3. Run with disabled web security: flutter run -d chrome --web-browser-flag="--disable-web-security"\n'
+            '4. Deploy to a production environment where CORS is properly configured\n\n'
+            'Technical details: ${e.toString()}';
       } else {
         _errorMessage = 'Web download failed: ${e.toString()}\n\n'
             'For the best experience, please use the mobile app.';
