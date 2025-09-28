@@ -46,6 +46,10 @@ dependencies:
   flutter_staggered_animations: ^1.1.1
   shimmer: ^3.0.0
   lottie: ^3.1.2
+  # Permissions and media handling
+  permission_handler: ^11.3.1
+  media_scanner: ^2.0.0
+  device_info_plus: ^11.1.0
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
