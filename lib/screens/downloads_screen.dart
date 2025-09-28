@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -259,25 +261,25 @@ class DownloadsScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             child: Stack(
               children: [
-                // Background gradient
+                // Thumbnail or placeholder
                 Positioned.fill(
                   child: Container(
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(20),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          theme.colorScheme.primary.withOpacity(0.6),
-                          theme.colorScheme.secondary.withOpacity(0.6),
-                        ],
-                      ),
                     ),
-                    child: Center(
-                      child: Icon(
-                        isImage ? Icons.image_rounded : Icons.movie_rounded,
-                        size: 48,
-                        color: Colors.white.withOpacity(0.8),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: FutureBuilder(
+                        future: _loadThumbnail(item, isImage),
+                        builder: (context, snapshot) {
+                          if (snapshot.hasData && snapshot.data != null) {
+                            return snapshot.data!;
+                          } else if (snapshot.hasError) {
+                            return _buildPlaceholderIcon(isImage, theme);
+                          } else {
+                            return _buildPlaceholderIcon(isImage, theme);
+                          }
+                        },
                       ),
                     ),
                   ),
@@ -573,6 +575,67 @@ class DownloadsScreen extends StatelessWidget {
         content: Text('Sort options coming soon!'),
       ),
     );
+  }
+
+  Widget _buildPlaceholderIcon(bool isImage, ThemeData theme) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            theme.colorScheme.primary.withOpacity(0.6),
+            theme.colorScheme.secondary.withOpacity(0.6),
+          ],
+        ),
+      ),
+      child: Center(
+        child: Icon(
+          isImage ? Icons.image_rounded : Icons.movie_rounded,
+          size: 48,
+          color: Colors.white.withOpacity(0.8),
+        ),
+      ),
+    );
+  }
+
+  Future<Widget?> _loadThumbnail(dynamic item, bool isImage) async {
+    try {
+      // Check if thumbnail exists
+      if (item.thumbnailPath != null && item.thumbnailPath.isNotEmpty) {
+        final file = File(item.thumbnailPath);
+        if (await file.exists()) {
+          return Image.file(
+            file,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return _buildPlaceholderIcon(isImage, Theme.of(context));
+            },
+          );
+        }
+      }
+      
+      // If no thumbnail, try to use the main file for images
+      if (isImage) {
+        final file = File(item.filePath);
+        if (await file.exists()) {
+          return Image.file(
+            file,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              return _buildPlaceholderIcon(isImage, Theme.of(context));
+            },
+          );
+        }
+      }
+      
+      // Return placeholder if no valid image
+      return null;
+    } catch (e) {
+      print('Error loading thumbnail: $e');
+      return null;
+    }
   }
 
   int _getCrossAxisCount(BuildContext context) {

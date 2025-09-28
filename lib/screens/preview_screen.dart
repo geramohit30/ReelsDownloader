@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
@@ -42,29 +44,71 @@ class _PreviewScreenState extends State<PreviewScreen> {
     setState(() {
       _isInitializing = true;
     });
+    
     try {
       // For web, we can only play network URLs, not local files
       if (_isWeb &&
           !(videoUrl.startsWith('http://') ||
               videoUrl.startsWith('https://'))) {
         // Skip video initialization for local files on web
-        setState(() {
-          _isInitializing = false;
-        });
+        if (mounted) {
+          setState(() {
+            _isInitializing = false;
+          });
+        }
         return;
       }
 
       final c = VideoPlayerController.networkUrl(Uri.parse(videoUrl));
-      await c.initialize();
+      
+      // Add timeout to prevent hanging
+      await c.initialize().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          c.dispose();
+          throw TimeoutException('Video initialization timed out');
+        },
+      );
+      
       c.setLooping(true);
-      setState(() {
-        _controller = c;
-        _isInitializing = false;
-      });
-    } catch (_) {
-      setState(() {
-        _isInitializing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _controller = c;
+          _isInitializing = false;
+        });
+      }
+    } on TimeoutException catch (e) {
+      print('Video initialization timeout: $e');
+      if (mounted) {
+        setState(() {
+          _isInitializing = false;
+        });
+      }
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Preview loading timed out. You can still download the content.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } catch (e) {
+      print('Video initialization error: $e');
+      if (mounted) {
+        setState(() {
+          _isInitializing = false;
+        });
+      }
+      // Show error message
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Preview loading failed. You can still download the content.'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 
@@ -72,6 +116,15 @@ class _PreviewScreenState extends State<PreviewScreen> {
   void dispose() {
     _controller?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Re-initialize video if needed when widget is rebuilt
+    if (!_initTried && mounted) {
+      _maybeInitVideo();
+    }
   }
 
   Future<void> _startDownload(BuildContext context) async {
