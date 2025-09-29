@@ -6,20 +6,47 @@ import 'providers/theme_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/downloads_screen.dart';
 import 'screens/settings_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'dart:async';
 
 void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  runApp(
-    MultiProvider(
-      providers: [
-        ChangeNotifierProvider(create: (_) => DownloadProvider()..load()),
-        ChangeNotifierProvider(
-          create: (_) => ThemeProvider()..loadThemePreference(),
-        ),
-      ],
-      child: const MyApp(),
-    ),
-  );
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    
+    // Initialize Firebase with error handling
+    try {
+      await Firebase.initializeApp();
+      debugPrint("✅ Firebase initialized!");
+      
+      // Capture framework errors
+      FlutterError.onError = (errorDetails) {
+        FirebaseCrashlytics.instance.recordFlutterFatalError(errorDetails);
+      };
+    } catch (e) {
+      debugPrint("❌ Firebase initialization failed: $e");
+      // Continue app execution even if Firebase fails
+    }
+    
+    runApp(
+      MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => DownloadProvider()..load()),
+          ChangeNotifierProvider(
+            create: (_) => ThemeProvider()..loadThemePreference(),
+          ),
+        ],
+        child: const MyApp(),
+      ),
+    );
+  }, (error, stack) {
+    // Only record errors to Crashlytics if Firebase is initialized
+    try {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+    } catch (e) {
+      debugPrint("❌ Failed to record error to Crashlytics: $e");
+    }
+  });
 }
 
 class MyApp extends StatelessWidget {

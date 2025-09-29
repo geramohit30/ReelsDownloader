@@ -10,6 +10,7 @@ import 'network_test_screen.dart';
 import 'preview_screen.dart';
 import 'downloads_screen.dart';
 import '../main.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 
 // Conditional import for platform-specific file operations
 import 'downloads_screen_io_stub.dart'
