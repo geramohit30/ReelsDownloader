@@ -54,13 +54,29 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
-      // For web, display preview content directly below the download button
+      // For web, display preview content and automatically start download
       // For mobile, navigate to preview screen as before
       if (kIsWeb) {
         // Preview will be displayed in the UI directly
         setState(() {
           // Just trigger a rebuild to show the preview
         });
+        
+        // Automatically start download after preview is fetched
+        await provider.downloadReel(input);
+        
+        if (!mounted) return;
+        
+        // Show success message
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Download started! Check your browser\'s download folder or look for a download prompt.'),
+            duration: Duration(seconds: 5),
+          ),
+        );
+        
+        // Clear the input after successful download start
+        _ctrl.clear();
       } else {
         // Navigate to preview screen for mobile
         final result = await Navigator.push(
@@ -1021,8 +1037,8 @@ class _HomeScreenState extends State<HomeScreen> {
             if (kIsWeb) ...[
               Text(
                 postData.isVideo 
-                  ? 'Click the Download button below to save this video to your device' 
-                  : 'Click the Download button below to save this image to your device',
+                  ? 'Your video is being downloaded to your device' 
+                  : 'Your image is being downloaded to your device',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurface.withOpacity(0.7),
                 ),
@@ -1076,56 +1092,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 12),
             ],
-            // Download button for the preview
-            SizedBox(
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: () async {
-                  final provider = context.read<DownloadProvider>();
-                  try {
-                    await provider.downloadReel(_ctrl.text.trim());
-                    if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Download started! Check your browser\'s download folder or look for a download prompt.'),
-                        duration: Duration(seconds: 5),
-                      ),
-                    );
-                    // Clear the input after successful download start
-                    _ctrl.clear();
-                  } catch (e) {
-                    if (!mounted) return;
-                    String errorMessage = 'Download failed: ${e.toString()}';
-                    
-                    // Provide more specific error messages
-                    if (e.toString().contains('CORS') || e.toString().contains('blocked') || e.toString().contains('Failed to fetch')) {
-                      errorMessage = 'Download blocked by browser security. Please:\n'
-                          '1. Right-click the download button and select "Save Link As..."\n'
-                          '2. Or copy the Instagram URL and use a dedicated download tool\n'
-                          '3. Try using the mobile app for better experience';
-                    } else if (e.toString().contains('download')) {
-                      errorMessage = 'Download failed. Check your internet connection and try again.';
-                    }
-                    
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(errorMessage),
-                        duration: Duration(seconds: 8),
-                      ),
-                    );
-                  }
-                },
-                icon: const Icon(Icons.download_rounded),
-                label: const Text('Download to Device'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
+            // Remove the Download to Device button since download happens automatically
           ],
         ),
       ),
