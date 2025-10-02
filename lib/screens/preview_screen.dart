@@ -129,30 +129,30 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
   Future<void> _startDownload(BuildContext context) async {
     // Show warning for web users about download limitations
-    if (_isWeb) {
-      final shouldContinue = await showDialog<bool>(
-        context: context,
-        builder:
-            (context) => AlertDialog(
-              title: const Text('Download Limitation'),
-              content: const Text(
-                'Downloading videos on web browsers has limitations. The video will be downloaded in the browser. For full functionality, please use the mobile app.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
-                  child: const Text('Cancel'),
-                ),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(true),
-                  child: const Text('Continue'),
-                ),
-              ],
-            ),
-      );
-
-      if (shouldContinue != true) return;
-    }
+    // if (_isWeb) {
+    //   final shouldContinue = await showDialog<bool>(
+    //     context: context,
+    //     builder:
+    //         (context) => AlertDialog(
+    //           title: const Text('Download Limitation'),
+    //           content: const Text(
+    //             'Downloading videos on web browsers has limitations. The video will be downloaded in the browser. For full functionality, please use the mobile app.',
+    //           ),
+    //           actions: [
+    //             TextButton(
+    //               onPressed: () => Navigator.of(context).pop(false),
+    //               child: const Text('Cancel'),
+    //             ),
+    //             TextButton(
+    //               onPressed: () => Navigator.of(context).pop(true),
+    //               child: const Text('Continue'),
+    //             ),
+    //           ],
+    //         ),
+    //   );
+    //
+    //   if (shouldContinue != true) return;
+    // }
 
     final provider = context.read<DownloadProvider>();
     try {
