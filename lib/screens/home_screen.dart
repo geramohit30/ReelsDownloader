@@ -1021,12 +1021,58 @@ class _HomeScreenState extends State<HomeScreen> {
             if (kIsWeb) ...[
               Text(
                 postData.isVideo 
-                  ? 'Click the Download button below to save and view this video' 
-                  : 'Click the Download button below to save this image',
+                  ? 'Click the Download button below to save this video to your device' 
+                  : 'Click the Download button below to save this image to your device',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurface.withOpacity(0.7),
                 ),
                 textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              // Add download location information
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: theme.colorScheme.primary.withOpacity(0.3),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          size: 16,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Download Information',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              color: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '• Your browser may ask where to save the file\n'
+                      '• Check your Downloads folder if files don\'t appear immediately\n'
+                      '• Some browsers preview media files instead of downloading them\n'
+                      '• If download fails, try right-clicking and selecting "Save Link As..."',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurface.withOpacity(0.8),
+                      ),
+                      textAlign: TextAlign.left,
+                    ),
+                  ],
+                ),
               ),
               const SizedBox(height: 12),
             ],
@@ -1040,19 +1086,37 @@ class _HomeScreenState extends State<HomeScreen> {
                     await provider.downloadReel(_ctrl.text.trim());
                     if (!mounted) return;
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Download started')),
+                      const SnackBar(
+                        content: Text('Download started! Check your browser\'s download folder or look for a download prompt.'),
+                        duration: Duration(seconds: 5),
+                      ),
                     );
                     // Clear the input after successful download start
                     _ctrl.clear();
                   } catch (e) {
                     if (!mounted) return;
+                    String errorMessage = 'Download failed: ${e.toString()}';
+                    
+                    // Provide more specific error messages
+                    if (e.toString().contains('CORS') || e.toString().contains('blocked') || e.toString().contains('Failed to fetch')) {
+                      errorMessage = 'Download blocked by browser security. Please:\n'
+                          '1. Right-click the download button and select "Save Link As..."\n'
+                          '2. Or copy the Instagram URL and use a dedicated download tool\n'
+                          '3. Try using the mobile app for better experience';
+                    } else if (e.toString().contains('download')) {
+                      errorMessage = 'Download failed. Check your internet connection and try again.';
+                    }
+                    
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Download failed: ${e.toString()}')),
+                      SnackBar(
+                        content: Text(errorMessage),
+                        duration: Duration(seconds: 8),
+                      ),
                     );
                   }
                 },
                 icon: const Icon(Icons.download_rounded),
-                label: const Text('Download'),
+                label: const Text('Download to Device'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: theme.colorScheme.primary,
                   foregroundColor: Colors.white,

@@ -518,6 +518,10 @@ class DownloadProvider extends ChangeNotifier {
       final fileExtension = reelData.mediaUrl.toLowerCase().contains('.mp4') ? '.mp4' : '.jpg';
       final fileName = 'reel_${shortcode}_${DateTime.now().millisecondsSinceEpoch}$fileExtension';
       
+      print('📥 WEB DOWNLOAD: Starting download of $fileName');
+      print('   • Media URL: ${reelData.mediaUrl}');
+      print('   • File extension detected: $fileExtension');
+      
       // Use the improved web download service
       final filePath = await WebDownloadService.downloadMedia(
         mediaUrl: reelData.mediaUrl,
@@ -543,8 +547,13 @@ class DownloadProvider extends ChangeNotifier {
       // Show success message
       _errorMessage = null;
       
+      print('✅ WEB DOWNLOAD: Successfully triggered download of $fileName');
+      print('   • File path: $filePath');
+      print('   • Saved to browser downloads folder');
+      
     } catch (e) {
       print('❌ WEB DOWNLOAD FAILED: ${e.toString()}');
+      print('   • Stack trace: ${StackTrace.current}');
       
       // Provide helpful error message for web users
       if (e.toString().contains('CORS') || e.toString().contains('blocked') || 
@@ -557,9 +566,17 @@ class DownloadProvider extends ChangeNotifier {
             '3. Run with disabled web security: flutter run -d chrome --web-browser-flag="--disable-web-security"\n'
             '4. Deploy to a production environment where CORS is properly configured\n\n'
             'Technical details: ${e.toString()}';
+      } else if (e.toString().contains('Failed host lookup') || 
+                 e.toString().contains('SocketException') ||
+                 e.toString().contains('Network')) {
+        _errorMessage = 'Network Connection Error\n\n'
+            'Unable to connect to the Instagram Reels API server.\n\n'
+            'Please check your internet connection and try again.\n'
+            'If the problem persists, the API server might be temporarily unavailable.';
       } else {
         _errorMessage = 'Web download failed: ${e.toString()}\n\n'
-            'For the best experience, please use the mobile app.';
+            'For the best experience, please use the mobile app.\n'
+            'Check browser console for more details.';
       }
       
       rethrow;
