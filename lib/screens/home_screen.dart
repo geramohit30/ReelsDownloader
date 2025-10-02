@@ -217,7 +217,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 4),
                     Text(
                       kIsWeb
-                          ? 'Download Instagram Reel, Photo, Carousel & Story to your browser'
+                          ? 'Download Instagram Reel, Photo, Carousel & Story effortlessly'
                           : 'Download Instagram Reel, Photo, Carousel & Story effortlessly',
                       style: theme.textTheme.bodyMedium?.copyWith(
                         color: Colors.white.withOpacity(0.9),
