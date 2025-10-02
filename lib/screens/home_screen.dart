@@ -302,6 +302,13 @@ class _HomeScreenState extends State<HomeScreen> {
               validator: _validateUrl,
               maxLines: 1,
               minLines: 1,
+
+              onFieldSubmitted: (_) {
+                if (!isBusy) {
+                  HapticFeedback.mediumImpact();
+                  _onDownload();
+                }
+              },
             ),
             const SizedBox(height: 12),
             Text(
