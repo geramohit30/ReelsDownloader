@@ -21,12 +21,19 @@ class DownloadProvider extends ChangeNotifier {
   bool _isDownloading = false;
   bool _isFetchingPreview = false;
   String? _errorMessage;
+  InstagramPostData? _previewData; // Add this to store preview data
 
   List<ReelItem> get items => List.unmodifiable(_items);
   double? get activeProgress => _activeProgress;
   bool get isDownloading => _isDownloading;
   bool get isFetchingPreview => _isFetchingPreview;
   String? get errorMessage => _errorMessage;
+  InstagramPostData? get previewData => _previewData;
+
+  set previewData(InstagramPostData? value) {
+    _previewData = value;
+    notifyListeners();
+  }
 
   static const _prefsKey = 'downloads_v1';
 
@@ -78,27 +85,46 @@ class DownloadProvider extends ChangeNotifier {
       );
 
       print('✅ Local API returned: ${reelData.toString()}');
+      print('   • Media URL: ${reelData.mediaUrl}');
+      print('   • Thumbnail URL: ${reelData.thumbnailUrl}');
+      print('   • Media URL contains .jpg: ${reelData.mediaUrl.toLowerCase().contains('.jpg')}');
+      print('   • Media URL contains .mp4: ${reelData.mediaUrl.toLowerCase().contains('.mp4')}');
 
       // Detect content type from URL (JPG = story, MP4 = reel)
       final isStoryContent = reelData.mediaUrl.toLowerCase().contains('.jpg');
       print('   • Content Type: ${isStoryContent ? "Story (JPG)" : "Reel (MP4)"}');
 
       // Convert to InstagramPostData format
+      // For preview, we want to show a thumbnail for videos and the actual image for stories
+      final displayUrl = isStoryContent 
+          ? reelData.mediaUrl  // For stories, show the actual image
+          : (reelData.thumbnailUrl?.isNotEmpty == true 
+              ? reelData.thumbnailUrl  // For reels, prefer thumbnail if available
+              : reelData.mediaUrl); // Fallback to media URL if no thumbnail
+      
       final postData = InstagramPostData(
         id: reelData.id,
         shortcode: reelData.id,
         videoUrl:
             isStoryContent ? null : reelData.mediaUrl, // Video URL only for reels
-        displayUrl:
-            isStoryContent
-                ? reelData.mediaUrl
-                : reelData.thumbnailUrl, // Image URL for stories
+        displayUrl: displayUrl,
         caption: reelData.title,
         username: reelData.author,
         isVideo: !isStoryContent, // Stories are images, reels are videos
         takenAtTimestamp: DateTime.now(),
       );
 
+      print('✅ Converted to InstagramPostData:');
+      print('   • isVideo: ${postData.isVideo}');
+      print('   • displayUrl: ${postData.displayUrl}');
+      print('   • displayUrl is null/empty: ${postData.displayUrl?.isEmpty ?? true}');
+      print('   • videoUrl: ${postData.videoUrl}');
+      
+      _previewData = postData; // Store preview data
+      print('✅ REEL PREVIEW DATA STORED:');
+      print('   - isVideo: ${postData.isVideo}');
+      print('   - displayUrl: ${postData.displayUrl}');
+      print('   - videoUrl: ${postData.videoUrl}');
       return postData;
     } catch (e) {
       print('❌ Local API failed: ${e.toString()}');
@@ -188,21 +214,34 @@ class DownloadProvider extends ChangeNotifier {
     );
 
     print('✅ API SUCCESS: Local API returned data');
+    print('   • Media URL: ${reelData.mediaUrl}');
+    print('   • Thumbnail URL: ${reelData.thumbnailUrl}');
+    print('   • Media URL contains .jpg: ${reelData.mediaUrl.toLowerCase().contains('.jpg')}');
+    print('   • Media URL contains .mp4: ${reelData.mediaUrl.toLowerCase().contains('.mp4')}');
 
     // Detect content type from URL (JPG = story, MP4 = reel)
     final isStoryContent = reelData.mediaUrl.toLowerCase().contains('.jpg');
     print('   • Content Type: ${isStoryContent ? "Story (JPG)" : "Reel (MP4)"}');
 
     // Convert to InstagramPostData format
+    // For videos, use thumbnail URL for display if available, otherwise null
+    String? displayUrl;
+    if (isStoryContent) {
+      // For stories, use the media URL as display URL
+      displayUrl = reelData.mediaUrl;
+    } else {
+      // For reels, use thumbnail URL if available
+      displayUrl = reelData.thumbnailUrl?.isNotEmpty == true 
+          ? reelData.thumbnailUrl 
+          : null; // No thumbnail available
+    }
+    
     final postData = InstagramPostData(
       id: reelData.id,
       shortcode: reelData.id,
       videoUrl:
           isStoryContent ? null : reelData.mediaUrl, // Video URL only for reels
-      displayUrl:
-          isStoryContent
-              ? reelData.mediaUrl
-              : reelData.thumbnailUrl, // Image URL for stories
+      displayUrl: displayUrl,
       caption: reelData.title,
       username: reelData.author,
       isVideo: !isStoryContent, // Stories are images, reels are videos
@@ -253,6 +292,7 @@ class DownloadProvider extends ChangeNotifier {
 
     _isFetchingPreview = true;
     _errorMessage = null;
+    _previewData = null; // Clear previous preview data
     notifyListeners();
 
     try {
@@ -270,7 +310,13 @@ class DownloadProvider extends ChangeNotifier {
       // For non-reel content (Stories, Posts, TV), ONLY use API - no scraping fallback
       if (!isReel) {
         print('🎯 NON-REEL CONTENT: Using API-only strategy (no scraping fallback)');
-        return await _fetchFromApiOnly(reelUrl);
+        final postData = await _fetchFromApiOnly(reelUrl);
+        _previewData = postData; // Store preview data
+        print('✅ NON-REEL PREVIEW DATA STORED:');
+        print('   - isVideo: ${postData.isVideo}');
+        print('   - displayUrl: ${postData.displayUrl}');
+        print('   - videoUrl: ${postData.videoUrl}');
+        return postData;
       }
 
       // For reels, use the download service's new implementation which prioritizes Strategy 4
@@ -279,13 +325,24 @@ class DownloadProvider extends ChangeNotifier {
         // Use the download service's new method which prioritizes Strategy 4
         final postData = await _downloadService.getPostDataWithStrategy4Priority(reelUrl);
         print('✅ PRIMARY SUCCESS: Strategy 4 returned data for reel preview');
+        _previewData = postData; // Store preview data
+        print('✅ REEL PREVIEW DATA STORED:');
+        print('   - isVideo: ${postData.isVideo}');
+        print('   - displayUrl: ${postData.displayUrl}');
+        print('   - videoUrl: ${postData.videoUrl}');
         return postData;
       } catch (e) {
         print('❌ PRIMARY FAILED: Strategy 4 failed for reel: ${e.toString()}');
         print('🔄 FALLBACK: Trying Local API as backup for reel...');
 
         // If Strategy 4 fails for reels, try Local API as fallback
-        return await _fetchFromApiOnly(reelUrl);
+        final postData = await _fetchFromApiOnly(reelUrl);
+        _previewData = postData; // Store preview data
+        print('✅ FALLBACK PREVIEW DATA STORED:');
+        print('   - isVideo: ${postData.isVideo}');
+        print('   - displayUrl: ${postData.displayUrl}');
+        print('   - videoUrl: ${postData.videoUrl}');
+        return postData;
       }
     } catch (e) {
       print('❌ ALL METHODS FAILED: ${e.toString()}');
@@ -307,7 +364,10 @@ class DownloadProvider extends ChangeNotifier {
       rethrow;
     } finally {
       _isFetchingPreview = false;
+      print('🔔 Notifying listeners after preview fetch');
       notifyListeners();
+      // Add a small delay to ensure UI updates properly
+      await Future.delayed(const Duration(milliseconds: 50));
     }
   }
 
@@ -618,6 +678,11 @@ class DownloadProvider extends ChangeNotifier {
 
   void setIsFetchingPreview(bool v) {
     _isFetchingPreview = v;
+    notifyListeners();
+  }
+
+  void _setPreviewData(InstagramPostData? data) {
+    _previewData = data;
     notifyListeners();
   }
 }

@@ -119,8 +119,10 @@ class DownloadService {
           print('🟢 ✅ STRATEGY 4 SUCCESS!');
           final shortcode = InstagramUtils.extractShortcodeFromUrl(reelUrl);
           
+          // For Strategy 4, we don't have a display URL, so we'll set it to null
           return InstagramPostData(
             videoUrl: videoUrl.toString(),
+            displayUrl: null, // No display URL available in direct Strategy 4
             isVideo: true,
             shortcode: shortcode,
           );
@@ -135,9 +137,22 @@ class DownloadService {
       try {
         final reelData = await LocalApiService.fetchInstagramReel(reelUrl);
         
+        // For videos, we need to distinguish between thumbnail and video URL
+        // If thumbnailUrl is available, use it for display
+        // Otherwise, set displayUrl to null to show placeholder
+        String? displayUrl;
+        if (reelData.thumbnailUrl?.isNotEmpty == true) {
+          displayUrl = reelData.thumbnailUrl;
+        } else {
+          // No thumbnail available, set to null to show placeholder
+          displayUrl = null;
+        }
+            
+        // Ensure we properly set both videoUrl and displayUrl for API response
         return InstagramPostData(
-          videoUrl: reelData.mediaUrl,
-          isVideo: true,
+          videoUrl: reelData.mediaUrl.isNotEmpty ? reelData.mediaUrl : null,
+          displayUrl: displayUrl,
+          isVideo: true, // Assuming reels are videos
           shortcode: reelData.id,
           caption: reelData.title,
           username: reelData.author,

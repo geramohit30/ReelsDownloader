@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import '../providers/download_provider.dart';
 import '../services/instagram_utils.dart';
+import '../models/instagram_types.dart';
 import 'network_test_screen.dart';
 import 'preview_screen.dart';
 import 'downloads_screen.dart';
@@ -53,18 +54,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
-      // Navigate to preview screen
-      final result = await Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder:
-              (context) => PreviewScreen(reelUrl: input, postData: postData),
-        ),
-      );
+      // For web, display preview content directly below the download button
+      // For mobile, navigate to preview screen as before
+      if (kIsWeb) {
+        // Preview will be displayed in the UI directly
+        setState(() {
+          // Just trigger a rebuild to show the preview
+        });
+      } else {
+        // Navigate to preview screen for mobile
+        final result = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder:
+                (context) => PreviewScreen(reelUrl: input, postData: postData),
+          ),
+        );
 
-      // If download was successful, clear the input
-      if (result == true) {
-        _ctrl.clear();
+        // If download was successful, clear the input
+        if (result == true) {
+          _ctrl.clear();
+        }
       }
     } catch (e) {
       if (!mounted) return;
@@ -130,40 +140,36 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Form(
-              key: _formKey,
-              child: AnimationLimiter(
-                child: ListView(
-                  children: AnimationConfiguration.toStaggeredList(
-                    duration: const Duration(milliseconds: 400),
-                    childAnimationBuilder:
-                        (widget) => SlideAnimation(
-                          verticalOffset: 50.0,
-                          child: FadeInAnimation(child: widget),
+          child: kIsWeb
+              ? _buildWebLayout(theme, provider, isBusy, progress)
+              : Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: Form(
+                    key: _formKey,
+                    child: AnimationLimiter(
+                      child: ListView(
+                        children: AnimationConfiguration.toStaggeredList(
+                          duration: const Duration(milliseconds: 400),
+                          childAnimationBuilder: (widget) => SlideAnimation(
+                            verticalOffset: 50.0,
+                            child: FadeInAnimation(child: widget),
+                          ),
+                          children: [
+                            const SizedBox(height: 20),
+                            _buildHeader(theme),
+                            const SizedBox(height: 40),
+                            _buildUrlInputCard(theme, isBusy),
+                            const SizedBox(height: 24),
+                            _buildDownloadButton(theme, isBusy, provider),
+                            if (isBusy) ..._buildProgressIndicator(theme, progress, provider),
+                            const SizedBox(height: 40),
+                            _buildRecentDownloads(theme, provider),
+                          ],
                         ),
-                    children: [
-                      const SizedBox(height: 20),
-                      _buildHeader(theme),
-                      const SizedBox(height: 40),
-                      _buildUrlInputCard(theme, isBusy),
-                      const SizedBox(height: 24),
-                      _buildDownloadButton(theme, isBusy, provider),
-                      if (isBusy)
-                        ..._buildProgressIndicator(theme, progress, provider),
-                      const SizedBox(height: 40),
-                      _buildRecentDownloads(theme, provider),
-                      if (kIsWeb) ...[
-                        const SizedBox(height: 24),
-                        _buildWebDownloadInfo(theme),
-                      ],
-                    ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ),
-          ),
         ),
       ),
     );
@@ -650,6 +656,410 @@ class _HomeScreenState extends State<HomeScreen> {
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurface.withOpacity(0.8),
                 height: 1.4,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Build web layout (constrained width, mobile-like)
+  Widget _buildWebLayout(ThemeData theme, DownloadProvider provider,
+      bool isBusy, double? progress) {
+    return ScrollConfiguration(
+      behavior: ScrollConfiguration.of(context).copyWith(scrollbars: false),
+      child: SingleChildScrollView(
+        child: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 500),
+            padding: const EdgeInsets.all(20),
+            child: Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  const SizedBox(height: 20),
+                  _buildHeader(theme),
+                  const SizedBox(height: 40),
+                  _buildUrlInputCard(theme, isBusy),
+                  const SizedBox(height: 24),
+                  _buildDownloadButton(theme, isBusy, provider),
+                  if (isBusy) ..._buildProgressIndicator(theme, progress, provider),
+                  // Add preview content for web directly below download button
+                  if (provider.previewData != null) ...[
+                    const SizedBox(height: 24),
+                    _buildWebPreview(provider.previewData!, theme, context),
+                  ] else if (!isBusy && provider.previewData == null && _ctrl.text.trim().isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    _buildNoPreviewMessage(theme),
+                  ],
+                  const SizedBox(height: 40),
+                  _buildRecentDownloads(theme, provider),
+                  const SizedBox(height: 24),
+                  _buildWebDownloadInfo(theme),
+                  const SizedBox(height: 20),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+  
+  /// Build a message when no preview is available
+  Widget _buildNoPreviewMessage(ThemeData theme) {
+    final provider = context.watch<DownloadProvider>();
+    
+    String message = 'Enter an Instagram URL above and click Download to preview content';
+    
+    // Add more specific debugging information
+    if (provider.previewData != null) {
+      if (provider.previewData!.displayUrl == null && provider.previewData!.videoUrl != null) {
+        message = 'Preview data received but no thumbnail available. Video will be playable after download.';
+      } else if (provider.previewData!.displayUrl!.isEmpty) {
+        message = 'Preview data received but thumbnail URL is empty';
+      } else {
+        message = 'Preview data available but not displayed';
+      }
+    }
+    
+    return Card(
+      color: theme.cardColor,
+      elevation: 0.5,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            Icon(
+              Icons.info_outline,
+              size: 48,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              message,
+              style: theme.textTheme.bodyMedium,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Build media preview based on content type (image/video)
+  Widget _buildMediaPreview(InstagramPostData postData, ThemeData theme) {
+    final mediaUrl = postData.displayUrl ?? postData.videoUrl;
+    final isVideo = postData.isVideo;
+    
+    if (mediaUrl != null && mediaUrl.isNotEmpty) {
+      // For web, we show a simpler preview without trying to play videos
+      if (kIsWeb) {
+        if (isVideo) {
+          // For videos on web, show a video placeholder
+          return _buildVideoPlaceholder(theme);
+        } else {
+          // For images on web, try to show the image
+          return _buildImagePreview(mediaUrl, theme, isVideo);
+        }
+      }
+      
+      // For mobile, use the existing logic
+      // Check if it's a video URL
+      if (mediaUrl.contains('.mp4') || mediaUrl.contains('.mov') || mediaUrl.contains('video')) {
+        // For videos, show a video player preview
+        return _buildVideoPlayerPreview(mediaUrl, theme);
+      } else {
+        // For images, show image preview
+        return _buildImagePreview(mediaUrl, theme, isVideo);
+      }
+    } else {
+      // No URL available - show appropriate placeholder
+      return isVideo ? _buildVideoPlaceholder(theme) : _buildImagePlaceholder(theme);
+    }
+  }
+  
+  /// Build image preview widget
+  Widget _buildImagePreview(String imageUrl, ThemeData theme, bool isVideo) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.network(
+          imageUrl,
+          fit: BoxFit.cover,
+          loadingBuilder: (context, child, progress) {
+            if (progress == null) {
+              return child;
+            }
+            return Center(
+              child: SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  value: progress.expectedTotalBytes != null
+                      ? progress.cumulativeBytesLoaded / progress.expectedTotalBytes!
+                      : null,
+                ),
+              ),
+            );
+          },
+          errorBuilder: (context, error, stack) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.image_not_supported_outlined,
+                    size: 48,
+                    color: theme.colorScheme.onSurface.withOpacity(0.6),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Preview failed to load',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurface.withOpacity(0.6),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        if (isVideo)
+          Center(
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(0.5),
+                shape: BoxShape.circle,
+              ),
+              padding: const EdgeInsets.all(12),
+              child: const Icon(
+                Icons.play_arrow_rounded,
+                color: Colors.white,
+                size: 40,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+  
+  /// Build video placeholder when no thumbnail is available
+  Widget _buildVideoPlaceholder(ThemeData theme) {
+    return Container(
+      color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.video_library_outlined,
+              size: 48,
+              color: theme.colorScheme.onSurface.withOpacity(0.6),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Video Preview',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.8),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Download to view video',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  /// Build image placeholder when no image is available
+  Widget _buildImagePlaceholder(ThemeData theme) {
+    return Container(
+      color: theme.colorScheme.surfaceVariant.withOpacity(0.3),
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.image_outlined,
+              size: 48,
+              color: theme.colorScheme.onSurface.withOpacity(0.6),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Image Preview',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.8),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Download to view image',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withOpacity(0.6),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  /// Build video player preview widget
+  Widget _buildVideoPlayerPreview(String videoUrl, ThemeData theme) {
+    // For web, we'll show a message indicating that users can download to see the preview
+    if (kIsWeb) {
+      return Container(
+        height: 300,
+        color: Colors.black87,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.video_library_outlined,
+                size: 64,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Video Preview Available',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'Download the video to view and save it to your device',
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.white70,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Text(
+                'Video URL ready for download',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: Colors.white54,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // For mobile, we can try to initialize a video player
+    // ... existing mobile implementation
+    // (I'll keep this simple for now since the focus is on web)
+    return Container(
+      height: 300,
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.play_circle_fill,
+              size: 64,
+              color: Colors.white70,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Video Preview',
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: Colors.white70,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Add this new method to build the web preview
+  Widget _buildWebPreview(InstagramPostData postData, ThemeData theme, BuildContext context) {
+    return Card(
+      color: theme.cardColor,
+      elevation: 0.5,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Preview media display
+            Container(
+              height: 300,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+                border: Border.all(
+                  color: theme.colorScheme.primary.withOpacity(0.3),
+                  width: 1,
+                ),
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: _buildMediaPreview(postData, theme),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Information text for web
+            if (kIsWeb) ...[
+              Text(
+                postData.isVideo 
+                  ? 'Click the Download button below to save and view this video' 
+                  : 'Click the Download button below to save this image',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+            ],
+            // Download button for the preview
+            SizedBox(
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  final provider = context.read<DownloadProvider>();
+                  try {
+                    await provider.downloadReel(_ctrl.text.trim());
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Download started')),
+                    );
+                    // Clear the input after successful download start
+                    _ctrl.clear();
+                  } catch (e) {
+                    if (!mounted) return;
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Download failed: ${e.toString()}')),
+                    );
+                  }
+                },
+                icon: const Icon(Icons.download_rounded),
+                label: const Text('Download'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
               ),
             ),
           ],
