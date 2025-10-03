@@ -1,8 +1,5 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
-// The following import is only used on web; guarded by kIsWeb checks at runtime
-// ignore: avoid_web_libraries_in_flutter
-import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -16,14 +13,13 @@ import 'preview_screen.dart';
 import 'downloads_screen.dart';
 import '../main.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'home_screen_helper.dart';
 
-// Import for web platform views
+// Conditional imports for web-specific libraries
 // ignore: avoid_web_libraries_in_flutter
-import 'dart:ui_web' as ui_web;
-
-// Conditional import for platform-specific file operations
-import 'downloads_screen_io_stub.dart'
-    if (dart.library.io) 'downloads_screen_io.dart';
+import 'dart:html' as html show VideoElement, ImageElement;
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:ui_web' as ui_web show platformViewRegistry;
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -39,6 +35,29 @@ class _HomeScreenState extends State<HomeScreen> {
   void dispose() {
     _ctrl.dispose();
     super.dispose();
+  }
+
+  /// Check if a file exists (stub for web)
+  bool fileExists(String? path) {
+    // On web, we can't check file existence, so assume true if path exists
+    return path != null && path.isNotEmpty;
+  }
+
+  /// Build thumbnail widget (stub for web)
+  Widget buildThumbnail(String? thumbnailPath, {
+    required BoxFit fit,
+    Widget? errorWidget,
+  }) {
+    if (thumbnailPath == null || thumbnailPath.isEmpty) {
+      return errorWidget ?? Container();
+    }
+    
+    // On web, treat thumbnailPath as a network URL or data URL
+    return Image.network(
+      thumbnailPath,
+      fit: fit,
+      errorBuilder: (context, error, stackTrace) => errorWidget ?? Container(),
+    );
   }
 
   String? _validateUrl(String? v) {
@@ -1006,54 +1025,239 @@ class _HomeScreenState extends State<HomeScreen> {
 
   /// Web-specific: build a video element using platform views
   Widget _buildWebVideoPlayer(String videoUrl) {
-    // For Flutter web, we'll use HtmlElementView directly without platformViewRegistry
-    final viewType = 'web-video-${videoUrl.hashCode}';
-    
-    // Register the view factory using the correct web API
-    ui_web.platformViewRegistry.registerViewFactory(
-      viewType,
-      (int viewId) {
-        final videoElement = html.VideoElement()
-          ..src = videoUrl
-          ..controls = true
-          ..autoplay = false
-          ..muted = false
-          ..style.border = 'none'
-          ..style.width = '100%'
-          ..style.height = '100%'
-          ..attributes['playsinline'] = 'true';
-        return videoElement;
-      },
-    );
+    // For Flutter web, we'll use HtmlElementView directly
+    if (kIsWeb) {
+      try {
+        // Create a unique view type
+        final viewType = 'web-video-${videoUrl.hashCode}';
+        
+        // Register the view factory using the correct web API
+        ui_web.platformViewRegistry.registerViewFactory(
+          viewType,
+          (int viewId) {
+            final videoElement = html.VideoElement()
+              ..src = videoUrl
+              ..controls = true
+              ..autoplay = false
+              ..muted = false
+              ..style.border = 'none'
+              ..style.width = '100%'
+              ..style.height = '100%'
+              ..style.objectFit = 'cover'
+              ..attributes['playsinline'] = 'true';
+            return videoElement;
+          },
+        );
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: HtmlElementView(viewType: viewType),
-    );
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: HtmlElementView(viewType: viewType),
+        );
+      } catch (e) {
+        // Fallback if platform view registration fails
+        return Container(
+          height: 300,
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.video_library_outlined,
+                  size: 64,
+                  color: Colors.white70,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Video Preview',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    'Video URL: ${videoUrl.substring(0, videoUrl.length > 50 ? 50 : videoUrl.length)}${videoUrl.length > 50 ? '...' : ''}',
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 12,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Click download to save this video to your device',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    } else {
+      // Fallback for mobile
+      return Container(
+        height: 300,
+        color: Colors.black87,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.video_library_outlined,
+                size: 64,
+                color: Colors.white,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Video Preview Available',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'Download the video to view and save it to your device',
+                  style: TextStyle(
+                    color: Colors.white70,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
   }
 
   /// Web-specific: build an image element using platform views
   Widget _buildWebImageViewer(String imageUrl) {
-    final viewType = 'web-image-${imageUrl.hashCode}';
-    
-    // Register the view factory using the correct web API
-    ui_web.platformViewRegistry.registerViewFactory(
-      viewType,
-      (int viewId) {
-        final imgElement = html.ImageElement()
-          ..src = imageUrl
-          ..style.border = 'none'
-          ..style.width = '100%'
-          ..style.height = '100%'
-          ..style.objectFit = 'cover';
-        return imgElement;
-      },
-    );
+    if (kIsWeb) {
+      try {
+        // Create a unique view type
+        final viewType = 'web-image-${imageUrl.hashCode}';
+        
+        // Register the view factory using the correct web API
+        ui_web.platformViewRegistry.registerViewFactory(
+          viewType,
+          (int viewId) {
+            final imgElement = html.ImageElement()
+              ..src = imageUrl
+              ..style.border = 'none'
+              ..style.width = '100%'
+              ..style.height = '100%'
+              ..style.objectFit = 'cover';
+            return imgElement;
+          },
+        );
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: HtmlElementView(viewType: viewType),
-    );
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: HtmlElementView(viewType: viewType),
+        );
+      } catch (e) {
+        // Fallback if platform view registration fails
+        return Container(
+          height: 300,
+          decoration: BoxDecoration(
+            color: Colors.black,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.image_outlined,
+                  size: 64,
+                  color: Colors.white70,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Image Preview',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Text(
+                    'Image URL: ${imageUrl.substring(0, imageUrl.length > 50 ? 50 : imageUrl.length)}${imageUrl.length > 50 ? '...' : ''}',
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 12,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'Click download to save this image to your device',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    } else {
+      // Fallback for mobile
+      return Container(
+        height: 300,
+        color: Colors.black87,
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.image_outlined,
+                size: 64,
+                color: Colors.white,
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                'Image Preview Available',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 20),
+                child: Text(
+                  'Download the image to view and save it to your device',
+                  style: TextStyle(
+                    color: Colors.white70,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
   }
 
   // Add this new method to build the web preview
