@@ -49,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (thumbnailPath == null || thumbnailPath.isEmpty) {
       return errorWidget ?? Container();
     }
-    
+
     // On web, treat thumbnailPath as a network URL or data URL
     return Image.network(
       thumbnailPath,
@@ -59,7 +59,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String? _validateUrl(String? v) {
-    if (v == null || v.trim().isEmpty) return 'Paste a reel URL';
+    if (v == null || v
+        .trim()
+        .isEmpty) return 'Paste a reel URL';
     final s = v.trim();
     if (!InstagramUtils.isInstagramUrl(s)) {
       return 'Please enter a valid Instagram reel or story URL';
@@ -106,9 +108,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final isNetworkError =
           e.toString().contains('SocketException') ||
-          e.toString().contains('Failed host lookup') ||
-          e.toString().contains('Network error') ||
-          e.toString().contains('Local API server');
+              e.toString().contains('Failed host lookup') ||
+              e.toString().contains('Network error') ||
+              e.toString().contains('Local API server');
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -168,33 +170,35 @@ class _HomeScreenState extends State<HomeScreen> {
           child: kIsWeb
               ? _buildWebLayout(theme, provider, isBusy, progress)
               : Padding(
-                  padding: const EdgeInsets.all(20),
-                  child: Form(
-                    key: _formKey,
-                    child: AnimationLimiter(
-                      child: ListView(
-                        children: AnimationConfiguration.toStaggeredList(
-                          duration: const Duration(milliseconds: 400),
-                          childAnimationBuilder: (widget) => SlideAnimation(
-                            verticalOffset: 50.0,
-                            child: FadeInAnimation(child: widget),
-                          ),
-                          children: [
-                            const SizedBox(height: 20),
-                            _buildHeader(theme),
-                            const SizedBox(height: 40),
-                            _buildUrlInputCard(theme, isBusy),
-                            const SizedBox(height: 24),
-                            _buildDownloadButton(theme, isBusy, provider),
-                            if (isBusy) ..._buildProgressIndicator(theme, progress, provider),
-                            const SizedBox(height: 40),
-                            _buildRecentDownloads(theme, provider),
-                          ],
+            padding: const EdgeInsets.all(20),
+            child: Form(
+              key: _formKey,
+              child: AnimationLimiter(
+                child: ListView(
+                  children: AnimationConfiguration.toStaggeredList(
+                    duration: const Duration(milliseconds: 400),
+                    childAnimationBuilder: (widget) =>
+                        SlideAnimation(
+                          verticalOffset: 50.0,
+                          child: FadeInAnimation(child: widget),
                         ),
-                      ),
-                    ),
+                    children: [
+                      const SizedBox(height: 20),
+                      _buildHeader(theme),
+                      const SizedBox(height: 40),
+                      _buildUrlInputCard(theme, isBusy),
+                      const SizedBox(height: 24),
+                      _buildDownloadButton(theme, isBusy, provider),
+                      if (isBusy) ..._buildProgressIndicator(
+                          theme, progress, provider),
+                      const SizedBox(height: 40),
+                      _buildRecentDownloads(theme, provider),
+                    ],
                   ),
                 ),
+              ),
+            ),
+          ),
         ),
       ),
     );
@@ -316,17 +320,17 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: theme.colorScheme.primary,
                     ),
                     onPressed:
-                        isBusy
-                            ? null
-                            : () async {
-                              HapticFeedback.lightImpact();
-                              final data = await Clipboard.getData(
-                                'text/plain',
-                              );
-                              if (data?.text != null) {
-                                _ctrl.text = data!.text!.trim();
-                              }
-                            },
+                    isBusy
+                        ? null
+                        : () async {
+                      HapticFeedback.lightImpact();
+                      final data = await Clipboard.getData(
+                        'text/plain',
+                      );
+                      if (data?.text != null) {
+                        _ctrl.text = data!.text!.trim();
+                      }
+                    },
                   ),
                 ),
               ),
@@ -354,23 +358,21 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildDownloadButton(
-    ThemeData theme,
-    bool isBusy,
-    DownloadProvider provider,
-  ) {
+  Widget _buildDownloadButton(ThemeData theme,
+      bool isBusy,
+      DownloadProvider provider,) {
     return Container(
       width: double.infinity,
       height: 56,
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors:
-              isBusy
-                  ? [
-                    theme.colorScheme.onSurface.withOpacity(0.4),
-                    theme.colorScheme.onSurface.withOpacity(0.5),
-                  ]
-                  : [theme.colorScheme.primary, theme.colorScheme.secondary],
+          isBusy
+              ? [
+            theme.colorScheme.onSurface.withOpacity(0.4),
+            theme.colorScheme.onSurface.withOpacity(0.5),
+          ]
+              : [theme.colorScheme.primary, theme.colorScheme.secondary],
         ),
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
@@ -386,12 +388,12 @@ class _HomeScreenState extends State<HomeScreen> {
         color: Colors.transparent,
         child: InkWell(
           onTap:
-              isBusy
-                  ? null
-                  : () {
-                    HapticFeedback.mediumImpact();
-                    _onDownload();
-                  },
+          isBusy
+              ? null
+              : () {
+            HapticFeedback.mediumImpact();
+            _onDownload();
+          },
           borderRadius: BorderRadius.circular(16),
           child: Center(
             child: Row(
@@ -416,8 +418,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 Text(
                   isBusy
                       ? (provider.isFetchingPreview
-                          ? 'Fetching...'
-                          : 'Processing...')
+                      ? 'Fetching...'
+                      : 'Processing...')
                       : 'Download Reel',
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: Colors.white,
@@ -432,11 +434,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  List<Widget> _buildProgressIndicator(
-    ThemeData theme,
-    double? progress,
-    DownloadProvider provider,
-  ) {
+  List<Widget> _buildProgressIndicator(ThemeData theme,
+      double? progress,
+      DownloadProvider provider,) {
     return [
       const SizedBox(height: 24),
       Card(
@@ -542,7 +542,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   onPressed: () {
                     // Switch to downloads tab instead of pushing new screen
                     final rootState =
-                        context.findAncestorStateOfType<RootState>();
+                    context.findAncestorStateOfType<RootState>();
                     rootState?.switchToTab(
                       1,
                     ); // 1 is the index for downloads tab
@@ -556,7 +556,9 @@ class _HomeScreenState extends State<HomeScreen> {
               height: 80,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                itemCount: provider.items.take(5).length,
+                itemCount: provider.items
+                    .take(5)
+                    .length,
                 separatorBuilder: (_, __) => const SizedBox(width: 12),
                 itemBuilder: (_, index) {
                   final item = provider.items[index];
@@ -676,8 +678,8 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 12),
             Text(
               '• Downloads are saved to your browser\'s default download folder\n'
-              '• For best experience, allow browser downloads when prompted\n'
-              '• Some browsers may ask for permission before downloading',
+                  '• For best experience, allow browser downloads when prompted\n'
+                  '• Some browsers may ask for permission before downloading',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurface.withOpacity(0.8),
                 height: 1.4,
@@ -697,7 +699,7 @@ class _HomeScreenState extends State<HomeScreen> {
       child: SingleChildScrollView(
         child: Center(
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 500),
+            constraints: const BoxConstraints(maxWidth: 800),
             padding: const EdgeInsets.all(20),
             child: Form(
               key: _formKey,
@@ -709,15 +711,20 @@ class _HomeScreenState extends State<HomeScreen> {
                   _buildUrlInputCard(theme, isBusy),
                   const SizedBox(height: 24),
                   _buildDownloadButton(theme, isBusy, provider),
-                  if (isBusy) ..._buildProgressIndicator(theme, progress, provider),
+                  if (isBusy) ..._buildProgressIndicator(
+                      theme, progress, provider),
                   // Add preview content for web directly below download button
                   if (provider.previewData != null) ...[
                     const SizedBox(height: 24),
-                    _buildWebPreview(provider.previewData!, theme, context, provider),
-                  ] else if (!isBusy && provider.previewData == null && _ctrl.text.trim().isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    _buildNoPreviewMessage(theme),
-                  ],
+                    _buildWebPreview(
+                        provider.previewData!, theme, context, provider),
+                  ] else
+                    if (!isBusy && provider.previewData == null && _ctrl.text
+                        .trim()
+                        .isNotEmpty) ...[
+                      const SizedBox(height: 24),
+                      _buildNoPreviewMessage(theme),
+                    ],
                   const SizedBox(height: 40),
                   _buildRecentDownloads(theme, provider),
                   const SizedBox(height: 24),
@@ -731,24 +738,26 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-  
+
   /// Build a message when no preview is available
   Widget _buildNoPreviewMessage(ThemeData theme) {
     final provider = context.watch<DownloadProvider>();
-    
+
     String message = 'Enter an Instagram URL above and click Download to preview content';
-    
+
     // Add more specific debugging information
     if (provider.previewData != null) {
-      if (provider.previewData!.displayUrl == null && provider.previewData!.videoUrl != null) {
-        message = 'Preview data received but no thumbnail available. Video will be playable after download.';
+      if (provider.previewData!.displayUrl == null &&
+          provider.previewData!.videoUrl != null) {
+        message =
+        'Preview data received but no thumbnail available. Video will be playable after download.';
       } else if (provider.previewData!.displayUrl!.isEmpty) {
         message = 'Preview data received but thumbnail URL is empty';
       } else {
         message = 'Preview data available but not displayed';
       }
     }
-    
+
     return Card(
       color: theme.cardColor,
       elevation: 0.5,
@@ -777,7 +786,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Widget _buildMediaPreview(InstagramPostData postData, ThemeData theme) {
     final mediaUrl = postData.displayUrl ?? postData.videoUrl;
     final isVideo = postData.isVideo;
-    
+
     if (mediaUrl != null && mediaUrl.isNotEmpty) {
       // For web: render actual media using HTML elements for better compatibility
       if (kIsWeb) {
@@ -795,10 +804,11 @@ class _HomeScreenState extends State<HomeScreen> {
           return _buildWebVideoPlayer(postData.videoUrl!);
         }
       }
-      
+
       // For mobile, use the existing logic
       // Check if it's a video URL
-      if (mediaUrl.contains('.mp4') || mediaUrl.contains('.mov') || mediaUrl.contains('video')) {
+      if (mediaUrl.contains('.mp4') || mediaUrl.contains('.mov') ||
+          mediaUrl.contains('video')) {
         // For videos, show a video player preview
         return _buildVideoPlayerPreview(mediaUrl, theme);
       } else {
@@ -807,10 +817,11 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } else {
       // No URL available - show appropriate placeholder
-      return isVideo ? _buildVideoPlaceholder(theme) : _buildImagePlaceholder(theme);
+      return isVideo ? _buildVideoPlaceholder(theme) : _buildImagePlaceholder(
+          theme);
     }
   }
-  
+
   /// Build image preview widget
   Widget _buildImagePreview(String imageUrl, ThemeData theme, bool isVideo) {
     return Stack(
@@ -830,7 +841,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: CircularProgressIndicator(
                   strokeWidth: 2,
                   value: progress.expectedTotalBytes != null
-                      ? progress.cumulativeBytesLoaded / progress.expectedTotalBytes!
+                      ? progress.cumulativeBytesLoaded /
+                      progress.expectedTotalBytes!
                       : null,
                 ),
               ),
@@ -876,7 +888,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
     );
   }
-  
+
   /// Build video placeholder when no thumbnail is available
   Widget _buildVideoPlaceholder(ThemeData theme) {
     return Container(
@@ -909,7 +921,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-  
+
   /// Build image placeholder when no image is available
   Widget _buildImagePlaceholder(ThemeData theme) {
     return Container(
@@ -942,7 +954,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
-  
+
   /// Build video player preview widget
   Widget _buildVideoPlayerPreview(String videoUrl, ThemeData theme) {
     // For web, we'll show a message indicating that users can download to see the preview
@@ -1033,8 +1045,180 @@ class _HomeScreenState extends State<HomeScreen> {
     return HomeScreenHelper.buildWebImageViewer(imageUrl);
   }
 
+//Commented code
   // Add this new method to build the web preview
-  Widget _buildWebPreview(InstagramPostData postData, ThemeData theme, BuildContext context, DownloadProvider provider) {
+  // Widget _buildWebPreview(InstagramPostData postData, ThemeData theme, BuildContext context, DownloadProvider provider) {
+  //   return Card(
+  //     color: theme.cardColor,
+  //     elevation: 0.5,
+  //     child: Padding(
+  //       padding: const EdgeInsets.all(16),
+  //       child: Column(
+  //         crossAxisAlignment: CrossAxisAlignment.stretch,
+  //         children: [
+  //           // Preview media display
+  //           Container(
+  //             height: 500,
+  //             width: 200,
+  //             decoration: BoxDecoration(
+  //               borderRadius: BorderRadius.circular(12),
+  //               color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+  //               border: Border.all(
+  //                 color: theme.colorScheme.primary.withOpacity(0.3),
+  //                 width: 1,
+  //               ),
+  //             ),
+  //             child: ClipRRect(
+  //               borderRadius: BorderRadius.circular(12),
+  //               child: _buildMediaPreview(postData, theme),
+  //             ),
+  //           ),
+  //           const SizedBox(height: 16),
+  //           // Information text for web
+  //           if (kIsWeb) ...[
+  //             Text(
+  //               postData.isVideo
+  //                 ? 'Video preview ready. Click the download button to save to your device'
+  //                 : 'Image preview ready. Click the download button to save to your device',
+  //               style: theme.textTheme.bodySmall?.copyWith(
+  //                 color: theme.colorScheme.onSurface.withOpacity(0.7),
+  //               ),
+  //               textAlign: TextAlign.center,
+  //             ),
+  //             const SizedBox(height: 12),
+  //             // Add download button
+  //             Container(
+  //               height: 50,
+  //               decoration: BoxDecoration(
+  //                 gradient: LinearGradient(
+  //                   colors: [theme.colorScheme.primary, theme.colorScheme.secondary],
+  //                 ),
+  //                 borderRadius: BorderRadius.circular(12),
+  //                 boxShadow: [
+  //                   BoxShadow(
+  //                     color: theme.colorScheme.primary.withOpacity(0.3),
+  //                     blurRadius: 10,
+  //                     offset: const Offset(0, 2),
+  //                   ),
+  //                 ],
+  //               ),
+  //               child: Material(
+  //                 color: Colors.transparent,
+  //                 child: InkWell(
+  //                   onTap: provider.isDownloading ? null : () async {
+  //                     final input = _ctrl.text.trim();
+  //                     if (input.isEmpty) {
+  //                       ScaffoldMessenger.of(context).showSnackBar(
+  //                         const SnackBar(
+  //                           content: Text('Please enter a valid Instagram URL'),
+  //                           backgroundColor: Colors.red,
+  //                         ),
+  //                       );
+  //                       return;
+  //                     }
+  //
+  //                     try {
+  //                       await provider.downloadReel(input);
+  //                       if (!context.mounted) return;
+  //                       ScaffoldMessenger.of(context).showSnackBar(
+  //                         const SnackBar(
+  //                           content: Text('Download started! Check your browser\'s download folder or look for a download prompt.'),
+  //                           duration: Duration(seconds: 5),
+  //                         ),
+  //                       );
+  //                     } catch (e) {
+  //                       if (!context.mounted) return;
+  //                       final message = provider.errorMessage ?? e.toString();
+  //                       ScaffoldMessenger.of(context).showSnackBar(
+  //                         SnackBar(
+  //                           content: Text(message),
+  //                           backgroundColor: Colors.red,
+  //                         ),
+  //                       );
+  //                     }
+  //                   },
+  //                   borderRadius: BorderRadius.circular(12),
+  //                   child: Center(
+  //                     child: Row(
+  //                       mainAxisSize: MainAxisSize.min,
+  //                       children: [
+  //                         const Icon(
+  //                           Icons.download_rounded,
+  //                           color: Colors.white,
+  //                           size: 20,
+  //                         ),
+  //                         const SizedBox(width: 8),
+  //                         Text(
+  //                           'Download to Device',
+  //                           style: theme.textTheme.titleMedium?.copyWith(
+  //                             color: Colors.white,
+  //                             fontWeight: FontWeight.w600,
+  //                           ),
+  //                         ),
+  //                       ],
+  //                     ),
+  //                   ),
+  //                 ),
+  //               ),
+  //             ),
+  //             // const SizedBox(height: 12),
+  //             // // Add download location information
+  //             // Container(
+  //             //   padding: const EdgeInsets.all(12),
+  //             //   decoration: BoxDecoration(
+  //             //     color: theme.colorScheme.primary.withOpacity(0.1),
+  //             //     borderRadius: BorderRadius.circular(8),
+  //             //     border: Border.all(
+  //             //       color: theme.colorScheme.primary.withOpacity(0.3),
+  //             //     ),
+  //             //   ),
+  //             //   child: Column(
+  //             //     children: [
+  //             //       Row(
+  //             //         children: [
+  //             //           Icon(
+  //             //             Icons.info_outline,
+  //             //             size: 16,
+  //             //             color: theme.colorScheme.primary,
+  //             //           ),
+  //             //           const SizedBox(width: 8),
+  //             //           Expanded(
+  //             //             child: Text(
+  //             //               'Download Information',
+  //             //               style: theme.textTheme.bodyMedium?.copyWith(
+  //             //                 fontWeight: FontWeight.bold,
+  //             //                 color: theme.colorScheme.primary,
+  //             //               ),
+  //             //             ),
+  //             //           ),
+  //             //         ],
+  //             //       ),
+  //             //       const SizedBox(height: 4),
+  //             //       Text(
+  //             //         '• Your browser may ask where to save the file\n'
+  //             //         '• Check your Downloads folder if files don\'t appear immediately\n'
+  //             //         '• Some browsers preview media files instead of downloading them\n'
+  //             //         '• If download fails, try right-clicking and selecting "Save Link As..."',
+  //             //         style: theme.textTheme.bodySmall?.copyWith(
+  //             //           color: theme.colorScheme.onSurface.withOpacity(0.8),
+  //             //         ),
+  //             //         textAlign: TextAlign.left,
+  //             //       ),
+  //             //     ],
+  //             //   ),
+  //             // ),
+  //             // const SizedBox(height: 12),
+  //           ],
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
+
+  Widget _buildWebPreview(InstagramPostData postData,
+      ThemeData theme,
+      BuildContext context,
+      DownloadProvider provider,) {
     return Card(
       color: theme.cardColor,
       elevation: 0.5,
@@ -1043,41 +1227,57 @@ class _HomeScreenState extends State<HomeScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Preview media display
-            Container(
-              height: 300,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
-                color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
-                border: Border.all(
-                  color: theme.colorScheme.primary.withOpacity(0.3),
-                  width: 1,
+            // ✅ Reel / Media Preview with proper ratio & max width
+            Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: 300, // keeps reel compact on desktop
+                  maxHeight: 500, // don’t let it blow up vertically
+                ),
+                child: AspectRatio(
+                  aspectRatio: 9 / 16, // Instagram reel ratio
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
+                      border: Border.all(
+                        color: theme.colorScheme.primary.withOpacity(0.3),
+                        width: 1,
+                      ),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: _buildMediaPreview(postData, theme),
+                    ),
+                  ),
                 ),
               ),
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: _buildMediaPreview(postData, theme),
-              ),
             ),
+
             const SizedBox(height: 16),
-            // Information text for web
+
+            // Info text
             if (kIsWeb) ...[
               Text(
-                postData.isVideo 
-                  ? 'Video preview ready. Click the download button to save to your device' 
-                  : 'Image preview ready. Click the download button to save to your device',
+                postData.isVideo
+                    ? 'Video preview ready. Click the download button to save to your device'
+                    : 'Image preview ready. Click the download button to save to your device',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurface.withOpacity(0.7),
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
-              // Add download button
+
+              // ✅ Download button
               Container(
                 height: 50,
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
-                    colors: [theme.colorScheme.primary, theme.colorScheme.secondary],
+                    colors: [
+                      theme.colorScheme.primary,
+                      theme.colorScheme.secondary
+                    ],
                   ),
                   borderRadius: BorderRadius.circular(12),
                   boxShadow: [
@@ -1091,7 +1291,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Material(
                   color: Colors.transparent,
                   child: InkWell(
-                    onTap: provider.isDownloading ? null : () async {
+                    onTap: provider.isDownloading
+                        ? null
+                        : () async {
                       final input = _ctrl.text.trim();
                       if (input.isEmpty) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -1102,13 +1304,15 @@ class _HomeScreenState extends State<HomeScreen> {
                         );
                         return;
                       }
-                      
+
                       try {
                         await provider.downloadReel(input);
                         if (!context.mounted) return;
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text('Download started! Check your browser\'s download folder or look for a download prompt.'),
+                            content: Text(
+                              'Download started! Check your browser\'s download folder or look for a download prompt.',
+                            ),
                             duration: Duration(seconds: 5),
                           ),
                         );
@@ -1147,53 +1351,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 12),
-              // Add download location information
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: theme.colorScheme.primary.withOpacity(0.3),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          size: 16,
-                          color: theme.colorScheme.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'Download Information',
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: theme.colorScheme.primary,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '• Your browser may ask where to save the file\n'
-                      '• Check your Downloads folder if files don\'t appear immediately\n'
-                      '• Some browsers preview media files instead of downloading them\n'
-                      '• If download fails, try right-clicking and selecting "Save Link As..."',
-                      style: theme.textTheme.bodySmall?.copyWith(
-                        color: theme.colorScheme.onSurface.withOpacity(0.8),
-                      ),
-                      textAlign: TextAlign.left,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 12),
             ],
           ],
         ),
