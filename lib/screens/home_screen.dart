@@ -1,4 +1,8 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
+// The following import is only used on web; guarded by kIsWeb checks at runtime
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:html' as html;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +16,10 @@ import 'preview_screen.dart';
 import 'downloads_screen.dart';
 import '../main.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+
+// Import for web platform views
+// ignore: avoid_web_libraries_in_flutter
+import 'dart:ui_web' as ui_web;
 
 // Conditional import for platform-specific file operations
 import 'downloads_screen_io_stub.dart'
@@ -54,29 +62,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
       if (!mounted) return;
 
-      // For web, display preview content and automatically start download
+      // For web, display preview content without auto-starting download
       // For mobile, navigate to preview screen as before
       if (kIsWeb) {
         // Preview will be displayed in the UI directly
         setState(() {
           // Just trigger a rebuild to show the preview
         });
-        
-        // Automatically start download after preview is fetched
-        await provider.downloadReel(input);
-        
-        if (!mounted) return;
-        
-        // Show success message
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Download started! Check your browser\'s download folder or look for a download prompt.'),
-            duration: Duration(seconds: 5),
-          ),
-        );
-        
-        // Clear the input after successful download start
-        _ctrl.clear();
       } else {
         // Navigate to preview screen for mobile
         final result = await Navigator.push(
@@ -704,7 +696,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   // Add preview content for web directly below download button
                   if (provider.previewData != null) ...[
                     const SizedBox(height: 24),
-                    _buildWebPreview(provider.previewData!, theme, context),
+                    _buildWebPreview(provider.previewData!, theme, context, provider),
                   ] else if (!isBusy && provider.previewData == null && _ctrl.text.trim().isNotEmpty) ...[
                     const SizedBox(height: 24),
                     _buildNoPreviewMessage(theme),
@@ -770,14 +762,20 @@ class _HomeScreenState extends State<HomeScreen> {
     final isVideo = postData.isVideo;
     
     if (mediaUrl != null && mediaUrl.isNotEmpty) {
-      // For web, we show a simpler preview without trying to play videos
+      // For web: render actual media using HTML elements for better compatibility
       if (kIsWeb) {
-        if (isVideo) {
-          // For videos on web, show a video placeholder
-          return _buildVideoPlaceholder(theme);
-        } else {
-          // For images on web, try to show the image
-          return _buildImagePreview(mediaUrl, theme, isVideo);
+        if (isVideo && (postData.videoUrl?.isNotEmpty ?? false)) {
+          return _buildWebVideoPlayer(postData.videoUrl!);
+        }
+        if (!isVideo && (postData.displayUrl?.isNotEmpty ?? false)) {
+          return _buildWebImageViewer(postData.displayUrl!);
+        }
+        // Fallbacks
+        if (isVideo && (postData.displayUrl?.isNotEmpty ?? false)) {
+          return _buildWebImageViewer(postData.displayUrl!);
+        }
+        if (!isVideo && (postData.videoUrl?.isNotEmpty ?? false)) {
+          return _buildWebVideoPlayer(postData.videoUrl!);
         }
       }
       
@@ -1006,8 +1004,60 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  /// Web-specific: build a video element using platform views
+  Widget _buildWebVideoPlayer(String videoUrl) {
+    // For Flutter web, we'll use HtmlElementView directly without platformViewRegistry
+    final viewType = 'web-video-${videoUrl.hashCode}';
+    
+    // Register the view factory using the correct web API
+    ui_web.platformViewRegistry.registerViewFactory(
+      viewType,
+      (int viewId) {
+        final videoElement = html.VideoElement()
+          ..src = videoUrl
+          ..controls = true
+          ..autoplay = false
+          ..muted = false
+          ..style.border = 'none'
+          ..style.width = '100%'
+          ..style.height = '100%'
+          ..attributes['playsinline'] = 'true';
+        return videoElement;
+      },
+    );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: HtmlElementView(viewType: viewType),
+    );
+  }
+
+  /// Web-specific: build an image element using platform views
+  Widget _buildWebImageViewer(String imageUrl) {
+    final viewType = 'web-image-${imageUrl.hashCode}';
+    
+    // Register the view factory using the correct web API
+    ui_web.platformViewRegistry.registerViewFactory(
+      viewType,
+      (int viewId) {
+        final imgElement = html.ImageElement()
+          ..src = imageUrl
+          ..style.border = 'none'
+          ..style.width = '100%'
+          ..style.height = '100%'
+          ..style.objectFit = 'cover';
+        return imgElement;
+      },
+    );
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: HtmlElementView(viewType: viewType),
+    );
+  }
+
   // Add this new method to build the web preview
-  Widget _buildWebPreview(InstagramPostData postData, ThemeData theme, BuildContext context) {
+  Widget _buildWebPreview(InstagramPostData postData, ThemeData theme, BuildContext context, DownloadProvider provider) {
     return Card(
       color: theme.cardColor,
       elevation: 0.5,
@@ -1037,12 +1087,88 @@ class _HomeScreenState extends State<HomeScreen> {
             if (kIsWeb) ...[
               Text(
                 postData.isVideo 
-                  ? 'Your video is being downloaded to your device' 
-                  : 'Your image is being downloaded to your device',
+                  ? 'Video preview ready. Click the download button to save to your device' 
+                  : 'Image preview ready. Click the download button to save to your device',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurface.withOpacity(0.7),
                 ),
                 textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 12),
+              // Add download button
+              Container(
+                height: 50,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [theme.colorScheme.primary, theme.colorScheme.secondary],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: theme.colorScheme.primary.withOpacity(0.3),
+                      blurRadius: 10,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: provider.isDownloading ? null : () async {
+                      final input = _ctrl.text.trim();
+                      if (input.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please enter a valid Instagram URL'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                        return;
+                      }
+                      
+                      try {
+                        await provider.downloadReel(input);
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Download started! Check your browser\'s download folder or look for a download prompt.'),
+                            duration: Duration(seconds: 5),
+                          ),
+                        );
+                      } catch (e) {
+                        if (!context.mounted) return;
+                        final message = provider.errorMessage ?? e.toString();
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(message),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(12),
+                    child: Center(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.download_rounded,
+                            color: Colors.white,
+                            size: 20,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Download to Device',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(height: 12),
               // Add download location information
@@ -1092,7 +1218,6 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const SizedBox(height: 12),
             ],
-            // Remove the Download to Device button since download happens automatically
           ],
         ),
       ),

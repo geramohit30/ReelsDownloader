@@ -219,6 +219,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
         _controller != null && _controller!.value.isInitialized;
     final displayUrl = widget.postData.displayUrl;
     final hasVideoUrl = widget.postData.videoUrl?.isNotEmpty ?? false;
+    final isVideo = widget.postData.isVideo;
 
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 60),
@@ -315,11 +316,70 @@ class _PreviewScreenState extends State<PreviewScreen> {
                       );
                     },
                   )
+                else if (isVideo)
+                  // Show video placeholder when no thumbnail is available
+                  Container(
+                    color: Colors.black87,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.video_library_outlined,
+                            size: 64,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Video Preview',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Download to view and save video',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: Colors.white70,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
                 else
+                  // Show image placeholder when no thumbnail is available
                   Container(
                     color: theme.colorScheme.surfaceVariant,
-                    child: const Center(
-                      child: Icon(Icons.image_not_supported_outlined),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.image_outlined,
+                            size: 64,
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Image Preview',
+                            style: theme.textTheme.titleMedium?.copyWith(
+                              color: theme.colorScheme.onSurface.withOpacity(0.8),
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Download to view and save image',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface.withOpacity(0.6),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
 
