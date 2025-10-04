@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/instagram_reel_data.dart';
+import '../models/instagram_multi_post_data.dart';
 
 /// Service for handling communication with local Instagram reels API
 class LocalApiService {
@@ -164,6 +165,153 @@ class LocalApiService {
     );
   }
 
+  /// Get multiple Instagram posts data from local API endpoint
+  ///
+  /// [url] - Instagram URL to fetch data for (stories, reels, etc.)
+  /// [maxRetries] - Maximum number of retry attempts (default: 3)
+  /// [retryDelay] - Delay between retries (default: 4 seconds)
+  /// Returns [InstagramMultiPostData] containing multiple posts information
+  /// Throws [LocalApiException] if the request fails
+  static Future<InstagramMultiPostData> fetchMultipleInstagramPosts(
+    String url, {
+    int maxRetries = 3,
+    Duration retryDelay = _defaultRetryDelay,
+  }) async {
+    // Rate limiting: ensure 4 seconds between requests
+    await _enforceRateLimit();
+    
+    print('🚀 LOCAL API: Fetching multiple Instagram posts (Attempt 1/${maxRetries + 1})');
+    print('   • Target URL: $url');
+    print('   • API Endpoint: $_baseUrl/api/insta/reels');
+    print('   • Max Retries: $maxRetries');
+    print('   • Retry Delay: ${retryDelay.inSeconds}s');
+    print('   • Rate Limit Delay: ${_rateLimitDelay.inSeconds}s');
+
+    LocalApiException? lastException;
+
+    for (int attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        if (attempt > 0) {
+          print('\n🔄 RETRY ATTEMPT ${attempt + 1}/${maxRetries + 1}');
+          print('   • Waiting ${retryDelay.inSeconds}s before retry...');
+          await Future.delayed(retryDelay);
+        }
+
+        // Validate the Instagram URL format
+        if (!_isValidInstagramUrl(url)) {
+          throw LocalApiException(
+            'Invalid Instagram URL format',
+            type: LocalApiErrorType.invalidUrl,
+          );
+        }
+
+        // Prepare request headers for GET request
+        final headers = {
+          'Accept': 'application/json',
+          'User-Agent': _getRandomUserAgent(),
+          'Accept-Language': 'en-US,en;q=0.9',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'Connection': 'keep-alive',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache',
+          'Sec-Fetch-Dest': 'empty',
+          'Sec-Fetch-Mode': 'cors',
+          'Sec-Fetch-Site': 'same-origin',
+        };
+
+        // Encode URL in base64 for the new GET API
+        final base64Url = base64Encode(utf8.encode(url));
+        final requestUrl = '$_baseUrl/api/insta/reels?url=$base64Url';
+
+        print('📤 REQUEST DETAILS (Attempt ${attempt + 1}):');
+        print('   • Method: GET');
+        print('   • Headers: ${headers.length} headers');
+        print('   • Base64 URL: $base64Url');
+        print('   • Request URL: $requestUrl');
+        print('   • Timeout: ${_defaultTimeout.inSeconds}s');
+
+        // Make the HTTP GET request with base64 encoded URL parameter
+        final response = await _client
+            .get(
+              Uri.parse(requestUrl),
+              headers: headers,
+            )
+            .timeout(
+              _defaultTimeout,
+              onTimeout: () {
+                throw TimeoutException(
+                  'Request timed out after ${_defaultTimeout.inSeconds} seconds',
+                  _defaultTimeout,
+                );
+              },
+            );
+
+        print('📥 RESPONSE DETAILS (Attempt ${attempt + 1}):');
+        print('   • Status Code: ${response.statusCode}');
+        print('   • Content-Type: ${response.headers['content-type']}');
+        print('   • Content Length: ${response.body.length} bytes');
+
+        // Handle different status codes
+        if (response.statusCode == 200) {
+          final result = _handleMultiplePostsResponse(response);
+          print('✅ SUCCESS: API request completed successfully on attempt ${attempt + 1}');
+          return result;
+        } else {
+          return _handleErrorResponse(response);
+        }
+      } on SocketException catch (e) {
+        lastException = LocalApiException(
+          'Cannot connect to API server: ${e.message}',
+          type: LocalApiErrorType.connectionError,
+          originalError: e,
+        );
+        print('❌ NETWORK ERROR (Attempt ${attempt + 1}): ${e.message}');
+      } on TimeoutException catch (e) {
+        lastException = LocalApiException(
+          'Request timed out after ${_defaultTimeout.inSeconds} seconds',
+          type: LocalApiErrorType.timeout,
+          originalError: e,
+        );
+        print('❌ TIMEOUT ERROR (Attempt ${attempt + 1}): ${e.message}');
+      } on FormatException catch (e) {
+        lastException = LocalApiException(
+          'Invalid JSON response from API server',
+          type: LocalApiErrorType.parseError,
+          originalError: e,
+        );
+        print('❌ JSON PARSE ERROR (Attempt ${attempt + 1}): ${e.message}');
+        // JSON errors are usually not recoverable with retries
+        break;
+      } on LocalApiException catch (e) {
+        lastException = e;
+        print('❌ API ERROR (Attempt ${attempt + 1}): $e');
+        // API errors (400, 401, etc.) are usually not recoverable with retries
+        if (_isNonRetryableError(e.type)) {
+          break;
+        }
+      } catch (e) {
+        lastException = LocalApiException(
+          'Unexpected error occurred: ${e.toString()}',
+          type: LocalApiErrorType.unknown,
+          originalError: e,
+        );
+        print('❌ UNEXPECTED ERROR (Attempt ${attempt + 1}): $e');
+      }
+
+      // If this was the last attempt, break the loop
+      if (attempt == maxRetries) {
+        break;
+      }
+    }
+
+    // All attempts failed, throw the last exception
+    print('❌ ALL ATTEMPTS FAILED: Throwing last exception');
+    throw lastException ?? LocalApiException(
+      'All retry attempts failed',
+      type: LocalApiErrorType.unknown,
+    );
+  }
+
   /// Handle successful API response
   static InstagramReelData _handleSuccessResponse(
     http.Response response,
@@ -175,6 +323,29 @@ class LocalApiService {
       print('✅ SUCCESS RESPONSE:');
       print('   • Response parsed successfully');
       print('   • JSON keys: ${jsonData.keys.toList()}');
+
+      // Check if response contains allUrls array for multiple posts
+      if (jsonData.containsKey('allUrls') && jsonData['allUrls'] is List) {
+        final multiPostData = InstagramMultiPostData.fromJson(jsonData);
+        print('   • Multiple posts detected: ${multiPostData.allUrls.length} items');
+        
+        // If there are multiple posts, we'll use the first one for backward compatibility
+        if (multiPostData.allUrls.isNotEmpty) {
+          final firstPost = multiPostData.allUrls[0];
+          final mediaUrl = firstPost.mediaUrl;
+          final thumbnailUrl = firstPost.isVideo ? firstPost.url : null;
+          
+          return InstagramReelData(
+            id: _extractReelId(originalUrl),
+            mediaUrl: mediaUrl,
+            thumbnailUrl: thumbnailUrl,
+            title: 'Instagram Post',
+            author: 'Unknown',
+            duration: 0,
+            originalUrl: originalUrl,
+          );
+        }
+      }
 
       // Extract media information from the response
       // Extract media information from the response
@@ -236,6 +407,30 @@ class LocalApiService {
       print('❌ ERROR PARSING SUCCESS RESPONSE: $e');
       throw LocalApiException(
         'Failed to parse successful API response: ${e.toString()}',
+        type: LocalApiErrorType.parseError,
+        originalError: e,
+      );
+    }
+  }
+
+  /// Handle multiple posts API response
+  static InstagramMultiPostData _handleMultiplePostsResponse(http.Response response) {
+    try {
+      final jsonData = jsonDecode(response.body) as Map<String, dynamic>;
+
+      print('✅ MULTIPLE POSTS RESPONSE:');
+      print('   • Response parsed successfully');
+      print('   • JSON keys: ${jsonData.keys.toList()}');
+
+      // Parse as multiple posts data
+      final multiPostData = InstagramMultiPostData.fromJson(jsonData);
+      print('   • Multiple posts: ${multiPostData.allUrls.length} items');
+      
+      return multiPostData;
+    } catch (e) {
+      print('❌ ERROR PARSING MULTIPLE POSTS RESPONSE: $e');
+      throw LocalApiException(
+        'Failed to parse multiple posts API response: ${e.toString()}',
         type: LocalApiErrorType.parseError,
         originalError: e,
       );

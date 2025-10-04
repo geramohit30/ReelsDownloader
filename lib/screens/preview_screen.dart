@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import '../models/instagram_types.dart';
+import '../models/instagram_multi_post_data.dart';
 import '../providers/download_provider.dart';
+import '../services/local_api_service.dart';
+import 'multi_post_screen.dart';
 
 class PreviewScreen extends StatefulWidget {
   const PreviewScreen({
@@ -128,32 +131,30 @@ class _PreviewScreenState extends State<PreviewScreen> {
   }
 
   Future<void> _startDownload(BuildContext context) async {
-    // Show warning for web users about download limitations
-    // if (_isWeb) {
-    //   final shouldContinue = await showDialog<bool>(
-    //     context: context,
-    //     builder:
-    //         (context) => AlertDialog(
-    //           title: const Text('Download Limitation'),
-    //           content: const Text(
-    //             'Downloading videos on web browsers has limitations. The video will be downloaded in the browser. For full functionality, please use the mobile app.',
-    //           ),
-    //           actions: [
-    //             TextButton(
-    //               onPressed: () => Navigator.of(context).pop(false),
-    //               child: const Text('Cancel'),
-    //             ),
-    //             TextButton(
-    //               onPressed: () => Navigator.of(context).pop(true),
-    //               child: const Text('Continue'),
-    //             ),
-    //           ],
-    //         ),
-    //   );
-    //
-    //   if (shouldContinue != true) return;
-    // }
+    // First check if multiple posts are available
+    try {
+      final multiPostData = await LocalApiService.fetchMultipleInstagramPosts(widget.reelUrl);
+      if (multiPostData.allUrls.length > 1) {
+        // Navigate to multi-post screen
+        final result = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => MultiPostScreen(reelUrl: widget.reelUrl),
+          ),
+        );
 
+        // If download was successful, close this screen
+        if (result == true) {
+          Navigator.of(context).pop(true);
+        }
+        return;
+      }
+    } catch (e) {
+      // If checking for multiple posts fails, continue with regular download
+      print('Multiple posts check failed: $e');
+    }
+
+    // Regular single post download
     final provider = context.read<DownloadProvider>();
     try {
       setState(() {
@@ -202,7 +203,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
               const SizedBox(height: 16),
               // _buildMeta(theme),
               // const SizedBox(height: 24),
-              _buildDownloadButton(theme, isBusy, progress, provider),
+              _buildActionButtons(theme, isBusy, progress, provider),
               if (isBusy) ...[
                 const SizedBox(height: 16),
                 _buildProgress(theme, progress, provider),
@@ -212,6 +213,58 @@ class _PreviewScreenState extends State<PreviewScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildActionButtons(
+    ThemeData theme,
+    bool isBusy,
+    double? progress,
+    DownloadProvider provider,
+  ) {
+    return Column(
+      children: [
+        // Check for multiple posts button
+        TextButton(
+          onPressed: isBusy ? null : () => _checkForMultiplePosts(context),
+          child: const Text('Check for multiple posts'),
+        ),
+        const SizedBox(height: 8),
+        // Download button
+        _buildDownloadButton(theme, isBusy, progress, provider),
+      ],
+    );
+  }
+
+  Future<void> _checkForMultiplePosts(BuildContext context) async {
+    try {
+      final multiPostData = await LocalApiService.fetchMultipleInstagramPosts(widget.reelUrl);
+      if (multiPostData.allUrls.length > 1) {
+        // Navigate to multi-post screen
+        final result = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => MultiPostScreen(reelUrl: widget.reelUrl),
+          ),
+        );
+
+        // If download was successful, close this screen
+        if (result == true) {
+          Navigator.of(context).pop(true);
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Only one post found')),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error checking for multiple posts: $e')),
+        );
+      }
+    }
   }
 
   Widget _buildMediaPreview(ThemeData theme) {

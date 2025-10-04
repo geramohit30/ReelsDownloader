@@ -8,9 +8,12 @@ import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import '../providers/download_provider.dart';
 import '../providers/navigation_provider.dart';
 import '../services/instagram_utils.dart';
+import '../services/local_api_service.dart';
 import '../models/instagram_types.dart';
+import '../models/instagram_multi_post_data.dart';
 import 'network_test_screen.dart';
 import 'preview_screen.dart';
+import 'multi_post_screen.dart';
 import 'downloads_screen.dart';
 import 'home_screen_helper.dart';
 import '../main.dart';
@@ -75,6 +78,32 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     try {
+      // First check if multiple posts are available
+      if (kIsWeb) {
+        // For web, check for multiple posts first
+        try {
+          final multiPostData = await LocalApiService.fetchMultipleInstagramPosts(input);
+          if (multiPostData.allUrls.length > 1) {
+            // Navigate to multi-post screen
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => MultiPostScreen(reelUrl: input),
+              ),
+            );
+
+            // If download was successful, clear the input
+            if (result == true) {
+              _ctrl.clear();
+            }
+            return;
+          }
+        } catch (e) {
+          // If checking for multiple posts fails, continue with regular flow
+          print('Multiple posts check failed: $e');
+        }
+      }
+
       // Use fetchReelForPreview which now includes automatic fallback
       // Instagram service first, Local API as backup if Instagram fails
       final postData = await provider.fetchReelForPreview(input);

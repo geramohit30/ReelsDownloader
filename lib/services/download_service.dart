@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import '../models/reel_item.dart';
 import '../models/instagram_types.dart';
+import '../models/instagram_multi_post_data.dart';
 import 'instagram_service.dart';
 import 'instagram_utils.dart';
 import 'thumbnail_service.dart';
@@ -101,6 +102,90 @@ class DownloadService {
     );
   }
 
+  /// Downloads all Instagram content (reels/stories) from URL when multiple posts are available
+  Future<List<ReelItem>> downloadAllInstagramPosts({
+    required String reelUrl,
+    required void Function(double progress) onProgress,
+    required void Function(int current, int total) onItemProgress,
+  }) async {
+    // Validate URL
+    if (!InstagramUtils.isInstagramUrl(reelUrl)) {
+      throw Exception('Invalid Instagram URL');
+    }
+
+    // Get multiple posts data
+    final multiPostData = await LocalApiService.fetchMultipleInstagramPosts(reelUrl);
+    
+    if (multiPostData.allUrls.isEmpty) {
+      throw Exception('No media found for this content');
+    }
+
+    final List<ReelItem> downloadedItems = [];
+    
+    // Download each post
+    for (int i = 0; i < multiPostData.allUrls.length; i++) {
+      final post = multiPostData.allUrls[i];
+      onItemProgress(i + 1, multiPostData.allUrls.length);
+      
+      try {
+        final mediaUrl = post.mediaUrl;
+        final isVideo = post.isVideo;
+        final fileExtension = isVideo ? 'mp4' : 'jpg';
+        
+        // Generate filename
+        final shortcode = _extractShortcodeFromUrl(reelUrl);
+        final filename = '${isVideo ? "reel" : "story"}_${shortcode}_${i + 1}_${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+
+        // Download media
+        final filePath = await downloadToGallery(
+          mediaUrl: Uri.parse(mediaUrl),
+          onProgress: onProgress,
+          suggestedName: filename,
+        );
+
+        // Create ReelItem
+        String? thumbnailPath;
+        try {
+          if (kIsWeb) {
+            // On web, we can't generate thumbnails easily, so we'll use the original URL or a placeholder
+            if (isVideo) {
+              // For videos on web, we can't generate thumbnails easily
+              // We'll use the source URL as a reference or null
+              thumbnailPath = null;
+            } else {
+              // For images, use the web download path
+              thumbnailPath = filePath;
+            }
+          } else {
+            // Mobile/Desktop thumbnail generation
+            if (isVideo) {
+              // Generate thumbnail from video
+              thumbnailPath = await _thumbnailService.generate(filePath);
+            } else {
+              // For images, use the image itself as thumbnail
+              thumbnailPath = filePath;
+            }
+          }
+        } catch (_) {
+          thumbnailPath = null;
+        }
+
+        downloadedItems.add(ReelItem(
+          id: '${shortcode}_${i + 1}',
+          sourceUrl: reelUrl,
+          filePath: filePath,
+          createdAt: DateTime.now(),
+          thumbnailPath: thumbnailPath,
+        ));
+      } catch (e) {
+        print('❌ Error downloading post ${i + 1}: $e');
+        // Continue with other posts even if one fails
+      }
+    }
+
+    return downloadedItems;
+  }
+
   /// Get post data with priority to Strategy 4 (Alternative video URL patterns) for reels
   /// If Strategy 4 fails, use our own API as fallback
   Future<InstagramPostData> getPostDataWithStrategy4Priority(String reelUrl) async {
@@ -135,28 +220,63 @@ class DownloadService {
       // If Strategy 4 fails, use our own API
       print('🔄 FALLBACK: Using our own API');
       try {
-        final reelData = await LocalApiService.fetchInstagramReel(reelUrl);
+        // First try to get multiple posts
+        final multiPostData = await LocalApiService.fetchMultipleInstagramPosts(reelUrl);
         
-        // For videos, we need to distinguish between thumbnail and video URL
-        // If thumbnailUrl is available, use it for display
-        // Otherwise, set displayUrl to null to show placeholder
-        String? displayUrl;
-        if (reelData.thumbnailUrl?.isNotEmpty == true) {
-          displayUrl = reelData.thumbnailUrl;
+        // Check if we have multiple posts
+        if (multiPostData.allUrls.length > 1) {
+          print('🟢 ✅ MULTIPLE POSTS FOUND: ${multiPostData.allUrls.length} items');
+          // For now, we'll use the first post for backward compatibility
+          // In the future, we can implement UI to show all posts
+          final firstPost = multiPostData.allUrls[0];
+          final mediaUrl = firstPost.mediaUrl;
+          final thumbnailUrl = firstPost.isVideo ? firstPost.url : null;
+          
+          return InstagramPostData(
+            videoUrl: firstPost.isVideo ? mediaUrl : null,
+            displayUrl: firstPost.isVideo ? thumbnailUrl : mediaUrl,
+            isVideo: firstPost.isVideo,
+            shortcode: _extractShortcodeFromUrl(reelUrl),
+          );
+        } else if (multiPostData.allUrls.length == 1) {
+          print('🟢 ✅ SINGLE POST FOUND');
+          // Handle single post case
+          final post = multiPostData.allUrls[0];
+          final mediaUrl = post.mediaUrl;
+          final thumbnailUrl = post.isVideo ? post.url : null;
+          
+          return InstagramPostData(
+            videoUrl: post.isVideo ? mediaUrl : null,
+            displayUrl: post.isVideo ? thumbnailUrl : mediaUrl,
+            isVideo: post.isVideo,
+            shortcode: _extractShortcodeFromUrl(reelUrl),
+          );
         } else {
-          // No thumbnail available, set to null to show placeholder
-          displayUrl = null;
+          // Fallback to original method if no posts found
+          print('🟡 NO POSTS FOUND, FALLING BACK TO ORIGINAL METHOD');
+          final reelData = await LocalApiService.fetchInstagramReel(reelUrl);
+          
+          // For videos, we need to distinguish between thumbnail and video URL
+          // If thumbnailUrl is available, use it for display
+          // Otherwise, set displayUrl to null to show placeholder
+          String? displayUrl;
+          if (reelData.thumbnailUrl?.isNotEmpty == true) {
+            displayUrl = reelData.thumbnailUrl;
+          } else {
+            // No thumbnail available, set to null to show placeholder
+            displayUrl = null;
+          }
+              
+          // Ensure we properly set both videoUrl and displayUrl for API response
+          return InstagramPostData(
+            videoUrl: reelData.mediaUrl.isNotEmpty ? reelData.mediaUrl : null,
+            displayUrl: displayUrl,
+            isVideo: true, // Assuming reels are videos
+            shortcode: reelData.id,
+            caption: reelData.title,
+            username: reelData.author,
+          );
         }
-            
-        // Ensure we properly set both videoUrl and displayUrl for API response
-        return InstagramPostData(
-          videoUrl: reelData.mediaUrl.isNotEmpty ? reelData.mediaUrl : null,
-          displayUrl: displayUrl,
-          isVideo: true, // Assuming reels are videos
-          shortcode: reelData.id,
-          caption: reelData.title,
-          username: reelData.author,
-        );
       } catch (e) {
         print('🔴 API FALLBACK FAILED: $e');
         throw Exception('Both Strategy 4 and API fallback failed: $e');
@@ -288,6 +408,11 @@ class DownloadService {
     } catch (_) {
       return s.replaceAll(r'\/', '/').replaceAll(r'\u0026', '&');
     }
+  }
+
+  /// Extract shortcode from Instagram URL
+  String _extractShortcodeFromUrl(String url) {
+    return InstagramUtils.extractShortcodeFromUrl(url);
   }
 
   /// Request storage permissions

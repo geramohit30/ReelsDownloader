@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/reel_item.dart';
 import '../models/instagram_types.dart';
+import '../models/instagram_multi_post_data.dart';
 import '../services/download_service.dart';
 import '../services/instagram_service.dart';
 import '../services/local_api_service.dart';
@@ -408,7 +409,41 @@ class DownloadProvider extends ChangeNotifier {
         return;
       }
 
-      // For reels, use the download service's new implementation which prioritizes Strategy 4
+      // For reels, first check if multiple posts are available
+      print('🎬 REEL DOWNLOAD: Checking for multiple posts');
+      try {
+        // First try to get multiple posts
+        final multiPostData = await LocalApiService.fetchMultipleInstagramPosts(reelUrl);
+        
+        // Check if we have multiple posts
+        if (multiPostData.allUrls.length > 1) {
+          print('🟢 ✅ MULTIPLE POSTS FOUND: ${multiPostData.allUrls.length} items');
+          // Download all posts
+          final items = await _downloadService.downloadAllInstagramPosts(
+            reelUrl: reelUrl,
+            onProgress: (progress) {
+              _activeProgress = progress;
+              notifyListeners();
+            },
+            onItemProgress: (current, total) {
+              print('📥 Downloading item $current of $total');
+            },
+          );
+          
+          // Add all items to the download list
+          for (final item in items) {
+            await addItem(item);
+          }
+          
+          _activeProgress = null;
+          return;
+        }
+      } catch (e) {
+        print('🟡 MULTIPLE POSTS CHECK FAILED: $e');
+        // Continue with regular download if multiple posts check fails
+      }
+
+      // Regular single post download
       print('🎬 REEL DOWNLOAD: Using download service with Strategy 4 priority');
       try {
         final reelItem = await _downloadService.downloadInstagramReel(
