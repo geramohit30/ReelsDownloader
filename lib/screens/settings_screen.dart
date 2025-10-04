@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'privacy_policy_screen.dart';
 import '../providers/theme_provider.dart';
+import '../providers/navigation_provider.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 
 class SettingsScreen extends StatelessWidget {
@@ -14,49 +16,103 @@ class SettingsScreen extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              theme.colorScheme.primary.withOpacity(0.05),
-              theme.colorScheme.surface,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              _buildHeader(theme),
-              Expanded(
-                child: AnimationLimiter(
-                  child: ListView(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    children: AnimationConfiguration.toStaggeredList(
-                      duration: const Duration(milliseconds: 400),
-                      childAnimationBuilder:
-                          (widget) => SlideAnimation(
-                            verticalOffset: 50.0,
-                            child: FadeInAnimation(child: widget),
-                          ),
-                      children: [
-                        // _buildGeneralSection(theme, context),
-                        // const SizedBox(height: 20),
-                        _buildDownloadSection(theme, context),
-                        const SizedBox(height: 20),
-                        _buildAppearanceSection(theme, context),
-                        const SizedBox(height: 20),
-                        _buildAboutSection(theme, context),
-                        const SizedBox(height: 40),
-                      ],
+      body: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  theme.colorScheme.primary.withOpacity(0.05),
+                  theme.colorScheme.surface,
+                ],
+              ),
+            ),
+            child: SafeArea(
+              child: Column(
+                children: [
+                  _buildHeader(theme),
+                  Expanded(
+                    child: AnimationLimiter(
+                      child: ListView(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        children: AnimationConfiguration.toStaggeredList(
+                          duration: const Duration(milliseconds: 400),
+                          childAnimationBuilder:
+                              (widget) => SlideAnimation(
+                                verticalOffset: 50.0,
+                                child: FadeInAnimation(child: widget),
+                              ),
+                          children: [
+                            // _buildGeneralSection(theme, context),
+                            // const SizedBox(height: 20),
+                            _buildDownloadSection(theme, context),
+                            const SizedBox(height: 20),
+                            _buildAppearanceSection(theme, context),
+                            const SizedBox(height: 20),
+                            _buildAboutSection(theme, context),
+                            const SizedBox(height: 40),
+                          ],
+                        ),
+                      ),
                     ),
                   ),
+                ],
+              ),
+            ),
+          ),
+          // Hamburger menu that scrolls with content
+          if (kIsWeb)
+            Positioned(
+              top: 20,
+              right: 20,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: PopupMenuButton<int>(
+                  icon: const Icon(Icons.menu, size: 30),
+                  onSelected: (index) {
+                    // Use the NavigationProvider to switch tabs
+                    final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+                    navigationProvider.switchToTab(index);
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 0,
+                      child: ListTile(
+                        leading: Icon(Icons.home),
+                        title: Text('Home'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 1,
+                      child: ListTile(
+                        leading: Icon(Icons.video_library),
+                        title: Text('Downloads'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 2,
+                      child: ListTile(
+                        leading: Icon(Icons.settings),
+                        title: Text('Settings'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
+            ),
+        ],
       ),
     );
   }

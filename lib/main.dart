@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'providers/download_provider.dart';
 import 'providers/theme_provider.dart';
+import 'providers/navigation_provider.dart';
 import 'screens/home_screen.dart';
 import 'screens/downloads_screen.dart';
 import 'screens/settings_screen.dart';
@@ -34,6 +36,9 @@ void main() {
           ChangeNotifierProvider(create: (_) => DownloadProvider()..load()),
           ChangeNotifierProvider(
             create: (_) => ThemeProvider()..loadThemePreference(),
+          ),
+          ChangeNotifierProvider(
+            create: (_) => NavigationProvider(),
           ),
         ],
         child: const MyApp(),
@@ -183,19 +188,18 @@ class _Root extends StatefulWidget {
 }
 
 class RootState extends State<_Root> {
-  int _index = 0;
   final _screens = const [HomeScreen(), DownloadsScreen(), SettingsScreen()];
-
-  // Method to switch to a specific tab
-  void switchToTab(int index) {
-    setState(() => _index = index);
-  }
 
   @override
   Widget build(BuildContext context) {
+    final navigationProvider = Provider.of<NavigationProvider>(context);
+    final currentIndex = navigationProvider.currentIndex;
+
     return Scaffold(
-      body: _screens[_index],
-      bottomNavigationBar: Container(
+      body: _screens[currentIndex],
+      bottomNavigationBar: kIsWeb 
+        ? null // Don't show bottom navigation bar on web
+        : Container( // Show complete container with navigation bar on mobile
         decoration: BoxDecoration(
           borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(20),
@@ -215,8 +219,10 @@ class RootState extends State<_Root> {
             topRight: Radius.circular(20),
           ),
           child: NavigationBar(
-            selectedIndex: _index,
-            onDestinationSelected: (i) => setState(() => _index = i),
+            selectedIndex: currentIndex,
+            onDestinationSelected: (index) {
+              navigationProvider.switchToTab(index);
+            },
             backgroundColor: Theme.of(context).colorScheme.surface,
             indicatorColor: Theme.of(
               context,

@@ -6,14 +6,14 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import '../providers/download_provider.dart';
+import '../providers/navigation_provider.dart';
 import '../services/instagram_utils.dart';
 import '../models/instagram_types.dart';
 import 'network_test_screen.dart';
 import 'preview_screen.dart';
 import 'downloads_screen.dart';
-import '../main.dart';
-import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'home_screen_helper.dart';
+import '../main.dart';
 
 // Conditional import for platform-specific file operations
 import 'downloads_screen_io_stub.dart'
@@ -154,52 +154,106 @@ class _HomeScreenState extends State<HomeScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              theme.colorScheme.primary.withOpacity(0.1),
-              theme.colorScheme.secondary.withOpacity(0.05),
-              theme.colorScheme.surface,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: kIsWeb
-              ? _buildWebLayout(theme, provider, isBusy, progress)
-              : Padding(
-            padding: const EdgeInsets.all(20),
-            child: Form(
-              key: _formKey,
-              child: AnimationLimiter(
-                child: ListView(
-                  children: AnimationConfiguration.toStaggeredList(
-                    duration: const Duration(milliseconds: 400),
-                    childAnimationBuilder: (widget) =>
-                        SlideAnimation(
-                          verticalOffset: 50.0,
-                          child: FadeInAnimation(child: widget),
-                        ),
-                    children: [
-                      const SizedBox(height: 20),
-                      _buildHeader(theme),
-                      const SizedBox(height: 40),
-                      _buildUrlInputCard(theme, isBusy),
-                      const SizedBox(height: 24),
-                      _buildDownloadButton(theme, isBusy, provider),
-                      if (isBusy) ..._buildProgressIndicator(
-                          theme, progress, provider),
-                      const SizedBox(height: 40),
-                      _buildRecentDownloads(theme, provider),
-                    ],
+      body: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  theme.colorScheme.primary.withOpacity(0.1),
+                  theme.colorScheme.secondary.withOpacity(0.05),
+                  theme.colorScheme.surface,
+                ],
+              ),
+            ),
+            child: SafeArea(
+              child: kIsWeb
+                  ? _buildWebLayout(theme, provider, isBusy, progress)
+                  : Padding(
+                padding: const EdgeInsets.all(20),
+                child: Form(
+                  key: _formKey,
+                  child: AnimationLimiter(
+                    child: ListView(
+                      children: AnimationConfiguration.toStaggeredList(
+                        duration: const Duration(milliseconds: 400),
+                        childAnimationBuilder: (widget) =>
+                            SlideAnimation(
+                              verticalOffset: 50.0,
+                              child: FadeInAnimation(child: widget),
+                            ),
+                        children: [
+                          const SizedBox(height: 20),
+                          _buildHeader(theme),
+                          const SizedBox(height: 40),
+                          _buildUrlInputCard(theme, isBusy),
+                          const SizedBox(height: 24),
+                          _buildDownloadButton(theme, isBusy, provider),
+                          if (isBusy) ..._buildProgressIndicator(
+                              theme, progress, provider),
+                          const SizedBox(height: 40),
+                          _buildRecentDownloads(theme, provider),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
+          // Hamburger menu that scrolls with content
+          if (kIsWeb)
+            Positioned(
+              top: 20,
+              right: 20,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: PopupMenuButton<int>(
+                  icon: const Icon(Icons.menu, size: 30),
+                  onSelected: (index) {
+                    // Use the NavigationProvider to switch tabs
+                    final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+                    navigationProvider.switchToTab(index);
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 0,
+                      child: ListTile(
+                        leading: Icon(Icons.home),
+                        title: Text('Home'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 1,
+                      child: ListTile(
+                        leading: Icon(Icons.video_library),
+                        title: Text('Downloads'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 2,
+                      child: ListTile(
+                        leading: Icon(Icons.settings),
+                        title: Text('Settings'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -541,11 +595,8 @@ class _HomeScreenState extends State<HomeScreen> {
                 TextButton(
                   onPressed: () {
                     // Switch to downloads tab instead of pushing new screen
-                    final rootState =
-                    context.findAncestorStateOfType<RootState>();
-                    rootState?.switchToTab(
-                      1,
-                    ); // 1 is the index for downloads tab
+                    final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+                    navigationProvider.switchToTab(1); // 1 is the index for downloads tab
                   },
                   child: const Text('View All'),
                 ),
@@ -1044,176 +1095,6 @@ class _HomeScreenState extends State<HomeScreen> {
     // Use the helper class which handles platform-specific implementations
     return HomeScreenHelper.buildWebImageViewer(imageUrl);
   }
-
-//Commented code
-  // Add this new method to build the web preview
-  // Widget _buildWebPreview(InstagramPostData postData, ThemeData theme, BuildContext context, DownloadProvider provider) {
-  //   return Card(
-  //     color: theme.cardColor,
-  //     elevation: 0.5,
-  //     child: Padding(
-  //       padding: const EdgeInsets.all(16),
-  //       child: Column(
-  //         crossAxisAlignment: CrossAxisAlignment.stretch,
-  //         children: [
-  //           // Preview media display
-  //           Container(
-  //             height: 500,
-  //             width: 200,
-  //             decoration: BoxDecoration(
-  //               borderRadius: BorderRadius.circular(12),
-  //               color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
-  //               border: Border.all(
-  //                 color: theme.colorScheme.primary.withOpacity(0.3),
-  //                 width: 1,
-  //               ),
-  //             ),
-  //             child: ClipRRect(
-  //               borderRadius: BorderRadius.circular(12),
-  //               child: _buildMediaPreview(postData, theme),
-  //             ),
-  //           ),
-  //           const SizedBox(height: 16),
-  //           // Information text for web
-  //           if (kIsWeb) ...[
-  //             Text(
-  //               postData.isVideo
-  //                 ? 'Video preview ready. Click the download button to save to your device'
-  //                 : 'Image preview ready. Click the download button to save to your device',
-  //               style: theme.textTheme.bodySmall?.copyWith(
-  //                 color: theme.colorScheme.onSurface.withOpacity(0.7),
-  //               ),
-  //               textAlign: TextAlign.center,
-  //             ),
-  //             const SizedBox(height: 12),
-  //             // Add download button
-  //             Container(
-  //               height: 50,
-  //               decoration: BoxDecoration(
-  //                 gradient: LinearGradient(
-  //                   colors: [theme.colorScheme.primary, theme.colorScheme.secondary],
-  //                 ),
-  //                 borderRadius: BorderRadius.circular(12),
-  //                 boxShadow: [
-  //                   BoxShadow(
-  //                     color: theme.colorScheme.primary.withOpacity(0.3),
-  //                     blurRadius: 10,
-  //                     offset: const Offset(0, 2),
-  //                   ),
-  //                 ],
-  //               ),
-  //               child: Material(
-  //                 color: Colors.transparent,
-  //                 child: InkWell(
-  //                   onTap: provider.isDownloading ? null : () async {
-  //                     final input = _ctrl.text.trim();
-  //                     if (input.isEmpty) {
-  //                       ScaffoldMessenger.of(context).showSnackBar(
-  //                         const SnackBar(
-  //                           content: Text('Please enter a valid Instagram URL'),
-  //                           backgroundColor: Colors.red,
-  //                         ),
-  //                       );
-  //                       return;
-  //                     }
-  //
-  //                     try {
-  //                       await provider.downloadReel(input);
-  //                       if (!context.mounted) return;
-  //                       ScaffoldMessenger.of(context).showSnackBar(
-  //                         const SnackBar(
-  //                           content: Text('Download started! Check your browser\'s download folder or look for a download prompt.'),
-  //                           duration: Duration(seconds: 5),
-  //                         ),
-  //                       );
-  //                     } catch (e) {
-  //                       if (!context.mounted) return;
-  //                       final message = provider.errorMessage ?? e.toString();
-  //                       ScaffoldMessenger.of(context).showSnackBar(
-  //                         SnackBar(
-  //                           content: Text(message),
-  //                           backgroundColor: Colors.red,
-  //                         ),
-  //                       );
-  //                     }
-  //                   },
-  //                   borderRadius: BorderRadius.circular(12),
-  //                   child: Center(
-  //                     child: Row(
-  //                       mainAxisSize: MainAxisSize.min,
-  //                       children: [
-  //                         const Icon(
-  //                           Icons.download_rounded,
-  //                           color: Colors.white,
-  //                           size: 20,
-  //                         ),
-  //                         const SizedBox(width: 8),
-  //                         Text(
-  //                           'Download to Device',
-  //                           style: theme.textTheme.titleMedium?.copyWith(
-  //                             color: Colors.white,
-  //                             fontWeight: FontWeight.w600,
-  //                           ),
-  //                         ),
-  //                       ],
-  //                     ),
-  //                   ),
-  //                 ),
-  //               ),
-  //             ),
-  //             // const SizedBox(height: 12),
-  //             // // Add download location information
-  //             // Container(
-  //             //   padding: const EdgeInsets.all(12),
-  //             //   decoration: BoxDecoration(
-  //             //     color: theme.colorScheme.primary.withOpacity(0.1),
-  //             //     borderRadius: BorderRadius.circular(8),
-  //             //     border: Border.all(
-  //             //       color: theme.colorScheme.primary.withOpacity(0.3),
-  //             //     ),
-  //             //   ),
-  //             //   child: Column(
-  //             //     children: [
-  //             //       Row(
-  //             //         children: [
-  //             //           Icon(
-  //             //             Icons.info_outline,
-  //             //             size: 16,
-  //             //             color: theme.colorScheme.primary,
-  //             //           ),
-  //             //           const SizedBox(width: 8),
-  //             //           Expanded(
-  //             //             child: Text(
-  //             //               'Download Information',
-  //             //               style: theme.textTheme.bodyMedium?.copyWith(
-  //             //                 fontWeight: FontWeight.bold,
-  //             //                 color: theme.colorScheme.primary,
-  //             //               ),
-  //             //             ),
-  //             //           ),
-  //             //         ],
-  //             //       ),
-  //             //       const SizedBox(height: 4),
-  //             //       Text(
-  //             //         '• Your browser may ask where to save the file\n'
-  //             //         '• Check your Downloads folder if files don\'t appear immediately\n'
-  //             //         '• Some browsers preview media files instead of downloading them\n'
-  //             //         '• If download fails, try right-clicking and selecting "Save Link As..."',
-  //             //         style: theme.textTheme.bodySmall?.copyWith(
-  //             //           color: theme.colorScheme.onSurface.withOpacity(0.8),
-  //             //         ),
-  //             //         textAlign: TextAlign.left,
-  //             //       ),
-  //             //     ],
-  //             //   ),
-  //             // ),
-  //             // const SizedBox(height: 12),
-  //           ],
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
 
   Widget _buildWebPreview(InstagramPostData postData,
       ThemeData theme,

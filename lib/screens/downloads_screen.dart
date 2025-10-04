@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
 import '../providers/download_provider.dart';
+import '../providers/navigation_provider.dart';
 import 'player_screen.dart';
 import 'image_viewer_screen.dart';
 
@@ -23,29 +24,83 @@ class DownloadsScreen extends StatelessWidget {
     final theme = Theme.of(context);
 
     return Scaffold(
-      body: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              theme.colorScheme.primary.withOpacity(0.05),
-              theme.colorScheme.surface,
-            ],
-          ),
-        ),
-        child: SafeArea(
-          child: Column(
-            children: [
-              _buildHeader(theme, items.length, context),
-              Expanded(
-                child: items.isEmpty
-                    ? _buildEmptyState(theme, context)
-                    : _buildDownloadGrid(items, theme, context),
+      body: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  theme.colorScheme.primary.withOpacity(0.05),
+                  theme.colorScheme.surface,
+                ],
               ),
-            ],
+            ),
+            child: SafeArea(
+              child: Column(
+                children: [
+                  _buildHeader(theme, items.length, context),
+                  Expanded(
+                    child: items.isEmpty
+                        ? _buildEmptyState(theme, context)
+                        : _buildDownloadGrid(items, theme, context),
+                  ),
+                ],
+              ),
+            ),
           ),
-        ),
+          // Hamburger menu that scrolls with content
+          if (kIsWeb)
+            Positioned(
+              top: 20,
+              right: 20,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
+                ),
+                child: PopupMenuButton<int>(
+                  icon: const Icon(Icons.menu, size: 30),
+                  onSelected: (index) {
+                    // Use the NavigationProvider to switch tabs
+                    final navigationProvider = Provider.of<NavigationProvider>(context, listen: false);
+                    navigationProvider.switchToTab(index);
+                  },
+                  itemBuilder: (context) => [
+                    const PopupMenuItem(
+                      value: 0,
+                      child: ListTile(
+                        leading: Icon(Icons.home),
+                        title: Text('Home'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 1,
+                      child: ListTile(
+                        leading: Icon(Icons.video_library),
+                        title: Text('Downloads'),
+                      ),
+                    ),
+                    const PopupMenuItem(
+                      value: 2,
+                      child: ListTile(
+                        leading: Icon(Icons.settings),
+                        title: Text('Settings'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
