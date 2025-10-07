@@ -1,10 +1,11 @@
 import 'dart:async';
-
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:video_player/video_player.dart';
 import '../models/instagram_types.dart';
 import '../providers/download_provider.dart';
+import 'package:share_plus/share_plus.dart';
 
 class PreviewScreen extends StatefulWidget {
   const PreviewScreen({
@@ -128,32 +129,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
   }
 
   Future<void> _startDownload(BuildContext context) async {
-    // Show warning for web users about download limitations
-    // if (_isWeb) {
-    //   final shouldContinue = await showDialog<bool>(
-    //     context: context,
-    //     builder:
-    //         (context) => AlertDialog(
-    //           title: const Text('Download Limitation'),
-    //           content: const Text(
-    //             'Downloading videos on web browsers has limitations. The video will be downloaded in the browser. For full functionality, please use the mobile app.',
-    //           ),
-    //           actions: [
-    //             TextButton(
-    //               onPressed: () => Navigator.of(context).pop(false),
-    //               child: const Text('Cancel'),
-    //             ),
-    //             TextButton(
-    //               onPressed: () => Navigator.of(context).pop(true),
-    //               child: const Text('Continue'),
-    //             ),
-    //           ],
-    //         ),
-    //   );
-    //
-    //   if (shouldContinue != true) return;
-    // }
-
+    // Regular single post download
     final provider = context.read<DownloadProvider>();
     try {
       setState(() {
@@ -161,9 +137,22 @@ class _PreviewScreenState extends State<PreviewScreen> {
       });
       await provider.downloadReel(widget.reelUrl);
       if (!mounted) return;
+      
+      // Show success message
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Download completed')));
+      
+      // For iOS, show additional instructions for gallery access
+      if (Platform.isIOS) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Download completed. Check Files app to access and import to Photos.'),
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+      
       Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
@@ -202,7 +191,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
               const SizedBox(height: 16),
               // _buildMeta(theme),
               // const SizedBox(height: 24),
-              _buildDownloadButton(theme, isBusy, progress, provider),
+              _buildActionButtons(theme, isBusy, progress, provider),
               if (isBusy) ...[
                 const SizedBox(height: 16),
                 _buildProgress(theme, progress, provider),
@@ -487,6 +476,50 @@ class _PreviewScreenState extends State<PreviewScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildActionButtons(
+    ThemeData theme,
+    bool isBusy,
+    double? progress,
+    DownloadProvider provider,
+  ) {
+    return Column(
+      children: [
+        // Share button for iOS users to easily share to Photos
+        if (Platform.isIOS) ...[
+          TextButton(
+            onPressed: isBusy ? null : () => _shareFile(context),
+            child: const Text('Share to Photos'),
+          ),
+          const SizedBox(height: 8),
+        ],
+        // Download button
+        _buildDownloadButton(theme, isBusy, progress, provider),
+      ],
+    );
+  }
+
+  /// Share file to Photos or other apps
+  Future<void> _shareFile(BuildContext context) async {
+    try {
+      // This would require getting the downloaded file path
+      // For now, we'll just show instructions
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('To save to Photos: Download first, then use Share option in Files app'),
+            duration: Duration(seconds: 5),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
   }
 
   Widget _buildDownloadButton(

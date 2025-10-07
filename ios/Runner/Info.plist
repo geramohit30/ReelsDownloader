@@ -53,5 +53,8 @@
     <!-- Permission for media library access -->
     <key>NSAppleMusicUsageDescription</key>
     <string>This app needs access to your media library to save downloaded content.</string>
+    <!-- Permission for saving photos to library -->
+    <key>NSCameraUsageDescription</key>
+    <string>This app needs access to camera to save photos and videos to your library.</string>
 </dict>
 </plist>

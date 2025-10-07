@@ -75,6 +75,21 @@ android {
     }
 }
 
+// Fix for image_gallery_saver plugin namespace issue
+subprojects {
+    afterEvaluate {
+        if (project.name == "image_gallery_saver") {
+            if (project.plugins.hasPlugin("com.android.library")) {
+                project.extensions.configure<com.android.build.gradle.LibraryExtension> {
+                    if (namespace == null || namespace == "") {
+                        namespace = "com.example.image_gallery_saver"
+                    }
+                }
+            }
+        }
+    }
+}
+
 flutter {
     source = "../.."
 }

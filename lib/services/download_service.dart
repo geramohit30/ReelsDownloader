@@ -7,6 +7,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:media_scanner/media_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+// Add gal plugin for iOS photo library saving
+import 'package:gal/gal.dart';
 import '../models/reel_item.dart';
 import '../models/instagram_types.dart';
 import 'instagram_service.dart';
@@ -416,13 +418,11 @@ class DownloadService {
       // iOS apps have a sandboxed file system
       final documentsDir = await getApplicationDocumentsDirectory();
       appDownloadsDir = Directory('${documentsDir.path}/Downloads');
+      print('📱 iOS: Using documents directory: ${appDownloadsDir.path}');
     } else {
-      // For Android, use the public Downloads directory
-      // Force use of public Downloads directory with Instagram Reels subdirectory
-      // Skip getDownloadsDirectory() as it often returns app-private directory
-      appDownloadsDir = Directory(
-        '/storage/emulated/0/Download/Instagram Reels',
-      );
+      // For Android, use the public Downloads directory with Instagram Reels subdirectory
+      appDownloadsDir = Directory('/storage/emulated/0/Download/Instagram Reels');
+      print('📱 Android: Using Downloads directory: ${appDownloadsDir.path}');
     }
 
     print('📁 Using directory: ${appDownloadsDir.path}');
@@ -438,10 +438,13 @@ class DownloadService {
         try {
           final fallbackDir = await getDownloadsDirectory();
           if (fallbackDir != null && await fallbackDir.exists()) {
-            appDownloadsDir = fallbackDir;
+            appDownloadsDir = Directory('${fallbackDir.path}/Instagram Reels');
             print(
               '📁 Using fallback Downloads directory: ${appDownloadsDir.path}',
             );
+            if (!await appDownloadsDir.exists()) {
+              await appDownloadsDir.create(recursive: true);
+            }
           } else {
             // Final fallback to app documents directory
             final documentsDir = await getApplicationDocumentsDirectory();
@@ -470,8 +473,9 @@ class DownloadService {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final name = suggestedName ?? 'Instagram_Reel_$timestamp.mp4';
     final file = File('${appDownloadsDir.path}/$name');
-
+    
     print('💾 Saving file to: ${file.path}');
+    print('💾 File name: $name');
 
     final req = http.Request('GET', mediaUrl);
     final res = await req.send();
@@ -494,30 +498,121 @@ class DownloadService {
 
     await sink.flush();
     await sink.close();
+    
+    // Verify file was saved
+    if (await file.exists()) {
+      final fileSize = await file.length();
+      print('✅ File saved successfully. Size: $fileSize bytes');
+    } else {
+      print('❌ File was not saved successfully');
+      throw Exception('File was not saved successfully');
+    }
 
-    // Notify media scanner to make the file visible in gallery (Android only)
-    if (Platform.isAndroid) {
-      try {
-        await MediaScanner.loadMedia(path: file.path);
-        print('✅ Media scanner notified for: ${file.path}');
-      } catch (e) {
-        print('⚠️ Failed to notify media scanner: $e');
-        // Fallback: try to save to the root Downloads directory for better visibility
-        await _saveToRootDownloads(file, name);
+    // Handle platform-specific gallery visibility
+    try {
+      if (Platform.isIOS) {
+        // For iOS, inform user that file is in app documents
+        print('ℹ️ iOS: File saved to app documents. Access via Files app.');
+        print('ℹ️ iOS: For gallery visibility, you may need to manually import the file to Photos.');
+      } else if (Platform.isAndroid) {
+        // For Android, ensure gallery visibility
+        try {
+          // Notify media scanner for the file
+          await MediaScanner.loadMedia(path: file.path);
+          print('✅ Media scanner notified for: ${file.path}');
+          
+          // Also save to the main Downloads directory for better visibility
+          final mainDownloadsDir = Directory('/storage/emulated/0/Download');
+          if (await mainDownloadsDir.exists()) {
+            final mainFile = File('${mainDownloadsDir.path}/$name');
+            await file.copy(mainFile.path);
+            print('✅ Copied file to main Downloads directory: ${mainFile.path}');
+            
+            // Notify media scanner for the main file as well
+            await MediaScanner.loadMedia(path: mainFile.path);
+            print('✅ Media scanner notified for main file: ${mainFile.path}');
+          }
+        } catch (e) {
+          print('⚠️ Error during Android gallery visibility handling: $e');
+        }
       }
-
-      // Additional fallback: scan the directory
-      try {
-        final directory = file.parent;
-        await MediaScanner.loadMedia(path: directory.path);
-        print('🔄 Directory scanned for media');
-      } catch (e) {
-        print('⚠️ Failed to scan directory: $e');
-      }
+    } catch (e) {
+      print('⚠️ Error during gallery visibility handling: $e');
     }
 
     onProgress(1.0);
     return file.path;
+  }
+
+  /// Save file to iOS photo library
+  Future<void> _saveToIOSPhotoLibrary(String filePath, String fileName) async {
+    try {
+      print('📱 iOS: Saving to photo library: $filePath');
+      print('📱 iOS: File name: $fileName');
+      
+      // Check if file exists
+      final file = File(filePath);
+      if (!await file.exists()) {
+        print('⚠️ iOS: File does not exist: $filePath');
+        return;
+      }
+      
+      // Get file size
+      final fileSize = await file.length();
+      print('📱 iOS: File size: $fileSize bytes');
+      
+      if (fileSize == 0) {
+        print('⚠️ iOS: File is empty');
+        return;
+      }
+      
+      // Determine if it's an image or video based on file extension
+      final lowerFileName = fileName.toLowerCase();
+      final isImage = lowerFileName.contains('.jpg') || 
+                     lowerFileName.contains('.jpeg') ||
+                     lowerFileName.contains('.png');
+                     
+      final isVideo = lowerFileName.contains('.mp4') || 
+                     lowerFileName.contains('.mov') ||
+                     lowerFileName.contains('.avi');
+      
+      print('📱 iOS: Is image: $isImage, Is video: $isVideo');
+      
+      // Use the gal plugin to save to iOS photo library
+      if (isImage) {
+        print('📱 iOS: Attempting to save as image');
+        await Gal.putImage(filePath);
+        print('✅ iOS: Image saved to photo library successfully');
+      } else if (isVideo) {
+        print('📱 iOS: Attempting to save as video');
+        await Gal.putVideo(filePath);
+        print('✅ iOS: Video saved to photo library successfully');
+      } else {
+        // For other file types, try to save as image first, then fallback
+        print('📱 iOS: Attempting to save as generic file');
+        try {
+          await Gal.putImage(filePath);
+          print('✅ iOS: File saved to photo library as image successfully');
+        } catch (imageError) {
+          print('⚠️ iOS: Failed to save as image: $imageError');
+          try {
+            await Gal.putVideo(filePath);
+            print('✅ iOS: File saved to photo library as video successfully');
+          } catch (videoError) {
+            print('⚠️ iOS: Failed to save as video: $videoError');
+            rethrow;
+          }
+        }
+      }
+    } catch (e, stackTrace) {
+      print('⚠️ iOS: Exception while saving to photo library: $e');
+      print('⚠️ iOS: Stack trace: $stackTrace');
+      
+      // Fallback approach - the file is already saved in the app's documents directory
+      // Users can access it through the Files app or iTunes file sharing
+      print('ℹ️ iOS: File saved to app documents. Access via Files app.');
+      print('ℹ️ iOS: For gallery visibility, you may need to manually import the file to Photos.');
+    }
   }
 
   /// Fallback method to save to root Downloads directory for better gallery visibility
