@@ -103,22 +103,24 @@ class DownloadService {
 
   /// Get post data with priority to Strategy 4 (Alternative video URL patterns) for reels
   /// If Strategy 4 fails, use our own API as fallback
-  Future<InstagramPostData> getPostDataWithStrategy4Priority(String reelUrl) async {
+  Future<InstagramPostData> getPostDataWithStrategy4Priority(
+      String reelUrl,
+      ) async {
     // Check if this is a reel URL
     final isReel = InstagramUtils.isReelUrl(reelUrl);
-    
+
     if (isReel) {
       print('🎬 REEL DETECTED: Prioritizing Strategy 4 with API fallback');
-      
+
       try {
         // Try Strategy 4 first (Alternative video URL patterns) directly
         print('🔍 TRYING STRATEGY 4: Alternative video URL patterns');
         final videoUrl = await _tryStrategy4Directly(reelUrl);
-        
+
         if (videoUrl != null) {
           print('🟢 ✅ STRATEGY 4 SUCCESS!');
           final shortcode = InstagramUtils.extractShortcodeFromUrl(reelUrl);
-          
+
           // For Strategy 4, we don't have a display URL, so we'll set it to null
           return InstagramPostData(
             videoUrl: videoUrl.toString(),
@@ -131,12 +133,12 @@ class DownloadService {
         print('🔴 STRATEGY 4 FAILED: $e');
         // Continue to API fallback
       }
-      
+
       // If Strategy 4 fails, use our own API
       print('🔄 FALLBACK: Using our own API');
       try {
         final reelData = await LocalApiService.fetchInstagramReel(reelUrl);
-        
+
         // For videos, we need to distinguish between thumbnail and video URL
         // If thumbnailUrl is available, use it for display
         // Otherwise, set displayUrl to null to show placeholder
@@ -147,7 +149,7 @@ class DownloadService {
           // No thumbnail available, set to null to show placeholder
           displayUrl = null;
         }
-            
+
         // Ensure we properly set both videoUrl and displayUrl for API response
         return InstagramPostData(
           videoUrl: reelData.mediaUrl.isNotEmpty ? reelData.mediaUrl : null,
@@ -173,18 +175,19 @@ class DownloadService {
   Future<Uri?> _tryStrategy4Directly(String reelUrl) async {
     try {
       print('🚀 DIRECT STRATEGY 4: Fetching HTML directly for $reelUrl');
-      
+
       // Create HTTP client
       final client = http.Client();
-      
+
       try {
         // Get user agent
         final userAgent = _getOptimalUserAgent();
-        
+
         // Set up headers
         final headers = {
           'User-Agent': userAgent,
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept':
+          'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9',
           'Accept-Encoding': 'gzip, deflate',
           'Connection': 'keep-alive',
@@ -209,7 +212,9 @@ class DownloadService {
         print('   • Content Length: ${response.body.length}');
 
         if (response.statusCode != 200) {
-          throw Exception('HTTP ${response.statusCode}: ${response.reasonPhrase}');
+          throw Exception(
+            'HTTP ${response.statusCode}: ${response.reasonPhrase}',
+          );
         }
 
         // Get HTML content
@@ -229,7 +234,7 @@ class DownloadService {
         // Apply Strategy 4 patterns directly
         print('🔍 APPLYING STRATEGY 4 PATTERNS...');
         final videoUrl = _findAlternativeVideoUrl(html);
-        
+
         if (videoUrl != null && videoUrl.contains('.mp4')) {
           print('🟢 ✅ STRATEGY 4 DIRECT SUCCESS!');
           print('   • Found video URL: $videoUrl');
@@ -255,7 +260,7 @@ class DownloadService {
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
     ];
-    
+
     return userAgentPool[_random.nextInt(userAgentPool.length)];
   }
 
@@ -297,41 +302,42 @@ class DownloadService {
       if (Platform.isAndroid) {
         final androidInfo = await DeviceInfoPlugin().androidInfo;
         final sdkInt = androidInfo.version.sdkInt;
-        
+
         if (sdkInt >= 33) {
           // Android 13+: Request media permissions
           final imagePermission = await Permission.photos.status;
           final videoPermission = await Permission.videos.status;
-          
+
           if (imagePermission.isGranted && videoPermission.isGranted) {
             return true;
           }
-          
+
           // If permissions are permanently denied, open app settings
-          if (imagePermission.isPermanentlyDenied || videoPermission.isPermanentlyDenied) {
+          if (imagePermission.isPermanentlyDenied ||
+              videoPermission.isPermanentlyDenied) {
             await openAppSettings();
             return false;
           }
-          
+
           // Request permissions if not granted
           final imageResult = await Permission.photos.request();
           final videoResult = await Permission.videos.request();
-          
+
           return imageResult.isGranted && videoResult.isGranted;
         } else {
           // Android < 13: Request storage permission
           final storagePermission = await Permission.storage.status;
-          
+
           if (storagePermission.isGranted) {
             return true;
           }
-          
+
           // If permission is permanently denied, open app settings
           if (storagePermission.isPermanentlyDenied) {
             await openAppSettings();
             return false;
           }
-          
+
           // Request permission if not granted
           final result = await Permission.storage.request();
           return result.isGranted;
@@ -339,22 +345,22 @@ class DownloadService {
       } else if (Platform.isIOS) {
         // iOS: Request photos permission
         final photosPermission = await Permission.photos.status;
-        
+
         if (photosPermission.isGranted) {
           return true;
         }
-        
+
         // If permission is permanently denied, open app settings
         if (photosPermission.isPermanentlyDenied) {
           await openAppSettings();
           return false;
         }
-        
+
         // Request permission if not granted
         final result = await Permission.photos.request();
         return result.isGranted;
       }
-      
+
       // For other platforms, assume permissions are granted
       return true;
     } catch (e) {
@@ -372,12 +378,15 @@ class DownloadService {
   }) async {
     // Check if we're running on web
     if (kIsWeb) {
-      print('🌐 WEB MODE: Using browser download for ${suggestedName ?? 'media'}');
-      
+      print(
+        '🌐 WEB MODE: Using browser download for ${suggestedName ?? 'media'}',
+      );
+
       // Sanitize filename for web
-      final fileName = suggestedName ?? 'media_${DateTime.now().millisecondsSinceEpoch}';
+      final fileName =
+          suggestedName ?? 'media_${DateTime.now().millisecondsSinceEpoch}';
       final safeFileName = WebDownloadService.sanitizeFileName(fileName);
-      
+
       // Use web download service
       return await WebDownloadService.downloadMedia(
         mediaUrl: mediaUrl.toString(),
@@ -391,58 +400,68 @@ class DownloadService {
     final hasPermission = await _requestStoragePermissions();
     if (!hasPermission) {
       print('❌ Storage permissions denied');
-      throw Exception('Storage permissions are required to save files to your device.');
+      throw Exception(
+        'Storage permissions are required to save files to your device.',
+      );
     }
 
     // Mobile/Desktop implementation - save to gallery-visible directory
     print('📱 MOBILE MODE: Saving to gallery for ${suggestedName ?? 'media'}');
-    
-    // Force use of public Downloads directory with Instagram Reels subdirectory
-    // Skip getDownloadsDirectory() as it often returns app-private directory
-    Directory appDownloadsDir = Directory('/storage/emulated/0/Download/Instagram Reels');
-    print('📁 Using forced public Downloads directory with Instagram Reels subdirectory: ${appDownloadsDir.path}');
-    
+
+    // Get the appropriate directory based on the platform
+    Directory appDownloadsDir;
+
+    if (Platform.isIOS) {
+      // For iOS, use the documents directory which is accessible to the app
+      // iOS apps have a sandboxed file system
+      final documentsDir = await getApplicationDocumentsDirectory();
+      appDownloadsDir = Directory('${documentsDir.path}/Downloads');
+    } else {
+      // For Android, use the public Downloads directory
+      // Force use of public Downloads directory with Instagram Reels subdirectory
+      // Skip getDownloadsDirectory() as it often returns app-private directory
+      appDownloadsDir = Directory(
+        '/storage/emulated/0/Download/Instagram Reels',
+      );
+    }
+
+    print('📁 Using directory: ${appDownloadsDir.path}');
+
     // Check if Downloads directory exists, if not try to create it
     if (!await appDownloadsDir.exists()) {
       try {
         await appDownloadsDir.create(recursive: true);
-        print('📁 Created public Downloads directory with Instagram Reels subdirectory: ${appDownloadsDir.path}');
+        print('📁 Created directory: ${appDownloadsDir.path}');
       } catch (e) {
-        print('⚠️ Failed to create public Downloads directory with Instagram Reels subdirectory: $e');
-        // Fallback to main Downloads directory
-        appDownloadsDir = Directory('/storage/emulated/0/Download');
-        if (!await appDownloadsDir.exists()) {
-          try {
-            await appDownloadsDir.create(recursive: true);
-            print('📁 Created public Downloads directory: ${appDownloadsDir.path}');
-          } catch (e2) {
-            print('⚠️ Failed to create public Downloads directory: $e2');
-            // Fallback to getDownloadsDirectory() if forced path fails
-            try {
-              final fallbackDir = await getDownloadsDirectory();
-              if (fallbackDir != null && await fallbackDir.exists()) {
-                appDownloadsDir = fallbackDir;
-                print('📁 Using fallback Downloads directory: ${appDownloadsDir.path}');
-              } else {
-                // Final fallback to app documents directory
-                final documentsDir = await getApplicationDocumentsDirectory();
-                appDownloadsDir = Directory('${documentsDir.path}/Downloads');
-                if (!await appDownloadsDir.exists()) {
-                  await appDownloadsDir.create(recursive: true);
-                }
-                print('📁 Using app documents directory: ${appDownloadsDir.path}');
-              }
-            } catch (fallbackError) {
-              print('⚠️ All directory methods failed: $fallbackError');
-              // Last resort: use app documents directory
-              final documentsDir = await getApplicationDocumentsDirectory();
-              appDownloadsDir = Directory('${documentsDir.path}/Downloads');
-              if (!await appDownloadsDir.exists()) {
-                await appDownloadsDir.create(recursive: true);
-              }
-              print('📁 Using last resort app documents directory: ${appDownloadsDir.path}');
+        print('⚠️ Failed to create directory: $e');
+        // Fallback to getDownloadsDirectory() if forced path fails
+        try {
+          final fallbackDir = await getDownloadsDirectory();
+          if (fallbackDir != null && await fallbackDir.exists()) {
+            appDownloadsDir = fallbackDir;
+            print(
+              '📁 Using fallback Downloads directory: ${appDownloadsDir.path}',
+            );
+          } else {
+            // Final fallback to app documents directory
+            final documentsDir = await getApplicationDocumentsDirectory();
+            appDownloadsDir = Directory('${documentsDir.path}/Downloads');
+            if (!await appDownloadsDir.exists()) {
+              await appDownloadsDir.create(recursive: true);
             }
+            print('📁 Using app documents directory: ${appDownloadsDir.path}');
           }
+        } catch (fallbackError) {
+          print('⚠️ All directory methods failed: $fallbackError');
+          // Last resort: use app documents directory
+          final documentsDir = await getApplicationDocumentsDirectory();
+          appDownloadsDir = Directory('${documentsDir.path}/Downloads');
+          if (!await appDownloadsDir.exists()) {
+            await appDownloadsDir.create(recursive: true);
+          }
+          print(
+            '📁 Using last resort app documents directory: ${appDownloadsDir.path}',
+          );
         }
       }
     }
@@ -451,7 +470,7 @@ class DownloadService {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     final name = suggestedName ?? 'Instagram_Reel_$timestamp.mp4';
     final file = File('${appDownloadsDir.path}/$name');
-    
+
     print('💾 Saving file to: ${file.path}');
 
     final req = http.Request('GET', mediaUrl);
@@ -476,23 +495,25 @@ class DownloadService {
     await sink.flush();
     await sink.close();
 
-    // Notify media scanner to make the file visible in gallery
-    try {
-      await MediaScanner.loadMedia(path: file.path);
-      print('✅ Media scanner notified for: ${file.path}');
-    } catch (e) {
-      print('⚠️ Failed to notify media scanner: $e');
-      // Fallback: try to save to the root Downloads directory for better visibility
-      await _saveToRootDownloads(file, name);
-    }
+    // Notify media scanner to make the file visible in gallery (Android only)
+    if (Platform.isAndroid) {
+      try {
+        await MediaScanner.loadMedia(path: file.path);
+        print('✅ Media scanner notified for: ${file.path}');
+      } catch (e) {
+        print('⚠️ Failed to notify media scanner: $e');
+        // Fallback: try to save to the root Downloads directory for better visibility
+        await _saveToRootDownloads(file, name);
+      }
 
-    // Additional fallback: scan the directory
-    try {
-      final directory = file.parent;
-      await MediaScanner.loadMedia(path: directory.path);
-      print('🔄 Directory scanned for media');
-    } catch (e) {
-      print('⚠️ Failed to scan directory: $e');
+      // Additional fallback: scan the directory
+      try {
+        final directory = file.parent;
+        await MediaScanner.loadMedia(path: directory.path);
+        print('🔄 Directory scanned for media');
+      } catch (e) {
+        print('⚠️ Failed to scan directory: $e');
+      }
     }
 
     onProgress(1.0);
@@ -501,16 +522,25 @@ class DownloadService {
 
   /// Fallback method to save to root Downloads directory for better gallery visibility
   Future<void> _saveToRootDownloads(File originalFile, String fileName) async {
+    // This method is only applicable for Android
+    if (!Platform.isAndroid) {
+      return;
+    }
+
     try {
       // Try to get the public Downloads directory with Instagram Reels subdirectory
-      Directory? downloadsDir = Directory('/storage/emulated/0/Download/Instagram Reels');
-      
+      Directory? downloadsDir = Directory(
+        '/storage/emulated/0/Download/Instagram Reels',
+      );
+
       // Ensure directory exists
       if (!await downloadsDir.exists()) {
         try {
           await downloadsDir.create(recursive: true);
         } catch (e) {
-          print('⚠️ Failed to create Instagram Reels subdirectory in fallback: $e');
+          print(
+            '⚠️ Failed to create Instagram Reels subdirectory in fallback: $e',
+          );
           // Fallback to main Downloads directory
           downloadsDir = Directory('/storage/emulated/0/Download');
           if (!await downloadsDir.exists()) {
@@ -529,17 +559,18 @@ class DownloadService {
           }
         }
       }
-      
+
       if (downloadsDir != null) {
         // Create a more visible filename
         final timestamp = DateTime.now().millisecondsSinceEpoch;
-        final extension = fileName.contains('.') ? fileName.split('.').last : 'mp4';
+        final extension =
+        fileName.contains('.') ? fileName.split('.').last : 'mp4';
         final visibleFileName = 'Instagram_Reel_$timestamp.$extension';
-        
+
         final rootFile = File('${downloadsDir.path}/$visibleFileName');
         await originalFile.copy(rootFile.path);
         await originalFile.delete(); // Remove the original file
-        
+
         // Notify media scanner for the root file
         await MediaScanner.loadMedia(path: rootFile.path);
         print('✅ Fallback: Saved to root Downloads and notified media scanner');
