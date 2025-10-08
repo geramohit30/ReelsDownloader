@@ -148,32 +148,12 @@ class _PreviewScreenState extends State<PreviewScreen> {
         context,
       ).showSnackBar(const SnackBar(content: Text('Download completed')));
       
-      // For iOS, show additional instructions for gallery access
-      // if (Platform.isIOS) {
-      //   if (mounted) {
-      //     await showDialog(
-      //       context: context,
-      //       builder: (context) => AlertDialog(
-      //         title: const Text('Download Complete'),
-      //         content: const Text(
-      //           'The file has been downloaded to your app documents.\n\n'
-      //           'To save it to Photos:\n'
-      //           '1. Open the Files app\n'
-      //           '2. Navigate to "On My iPhone" > "Reel Downloader"\n'
-      //           '3. Find your downloaded file\n'
-      //           '4. Tap the Share button\n'
-      //           '5. Select "Save to Photos"',
-      //         ),
-      //         actions: [
-      //           TextButton(
-      //             onPressed: () => Navigator.of(context).pop(),
-      //             child: const Text('OK'),
-      //           ),
-      //         ],
-      //       ),
-      //     );
-      //   }
-      // }
+      // Automatically navigate back to home screen after download
+      // Add a small delay to show the success message before navigating
+      await Future.delayed(Duration(seconds: 1));
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
       
       // Navigator.of(context).pop(true);
     } catch (e) {
