@@ -145,12 +145,29 @@ class _PreviewScreenState extends State<PreviewScreen> {
       
       // For iOS, show additional instructions for gallery access
       if (Platform.isIOS) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Download completed. Check Files app to access and import to Photos.'),
-            duration: Duration(seconds: 5),
-          ),
-        );
+        if (mounted) {
+          await showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Text('Download Complete'),
+              content: const Text(
+                'The file has been downloaded to your app documents.\n\n'
+                'To save it to Photos:\n'
+                '1. Open the Files app\n'
+                '2. Navigate to "On My iPhone" > "Reel Downloader"\n'
+                '3. Find your downloaded file\n'
+                '4. Tap the Share button\n'
+                '5. Select "Save to Photos"',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
       }
       
       Navigator.of(context).pop(true);
@@ -489,8 +506,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
         // Share button for iOS users to easily share to Photos
         if (Platform.isIOS) ...[
           TextButton(
-            onPressed: isBusy ? null : () => _shareFile(context),
-            child: const Text('Share to Photos'),
+            onPressed: isBusy ? null : () => _showIOSInstructions(context),
+            child: const Text('Save to Photos'),
           ),
           const SizedBox(height: 8),
         ],
@@ -500,25 +517,35 @@ class _PreviewScreenState extends State<PreviewScreen> {
     );
   }
 
-  /// Share file to Photos or other apps
-  Future<void> _shareFile(BuildContext context) async {
-    try {
-      // This would require getting the downloaded file path
-      // For now, we'll just show instructions
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('To save to Photos: Download first, then use Share option in Files app'),
-            duration: Duration(seconds: 5),
+  /// Show iOS instructions for saving to Photos
+  Future<void> _showIOSInstructions(BuildContext context) async {
+    if (mounted) {
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Save to Photos'),
+          content: const Text(
+            'To save this content to your Photos:\n\n'
+            '1. Tap "Download" below\n'
+            '2. After download completes, you\'ll see instructions for accessing the file\n'
+            '3. Open the Files app and locate your downloaded file\n'
+            '4. Tap the Share button and select "Save to Photos"',
           ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _startDownload(context);
+              },
+              child: const Text('Download'),
+            ),
+          ],
+        ),
+      );
     }
   }
 

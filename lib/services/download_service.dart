@@ -511,9 +511,8 @@ class DownloadService {
     // Handle platform-specific gallery visibility
     try {
       if (Platform.isIOS) {
-        // For iOS, inform user that file is in app documents
-        print('ℹ️ iOS: File saved to app documents. Access via Files app.');
-        print('ℹ️ iOS: For gallery visibility, you may need to manually import the file to Photos.');
+        // For iOS, save to photo library
+        await _saveToIOSPhotoLibrary(file.path, name);
       } else if (Platform.isAndroid) {
         // For Android, ensure gallery visibility
         try {
@@ -538,6 +537,11 @@ class DownloadService {
       }
     } catch (e) {
       print('⚠️ Error during gallery visibility handling: $e');
+      // For iOS, even if saving to photo library fails, the file is still saved locally
+      if (Platform.isIOS) {
+        print('ℹ️ iOS: File saved to app documents. Access via Files app.');
+        print('ℹ️ iOS: For gallery visibility, you may need to manually import the file to Photos.');
+      }
     }
 
     onProgress(1.0);
@@ -566,6 +570,10 @@ class DownloadService {
         return;
       }
       
+      // Read file bytes
+      final fileBytes = await file.readAsBytes();
+      print('📱 iOS: File bytes read: ${fileBytes.length}');
+      
       // Determine if it's an image or video based on file extension
       final lowerFileName = fileName.toLowerCase();
       final isImage = lowerFileName.contains('.jpg') || 
@@ -580,18 +588,18 @@ class DownloadService {
       
       // Use the gal plugin to save to iOS photo library
       if (isImage) {
-        print('📱 iOS: Attempting to save as image');
-        await Gal.putImage(filePath);
+        print('📱 iOS: Attempting to save as image using bytes');
+        await Gal.putImageBytes(fileBytes);
         print('✅ iOS: Image saved to photo library successfully');
       } else if (isVideo) {
-        print('📱 iOS: Attempting to save as video');
+        print('📱 iOS: Attempting to save as video using file path');
         await Gal.putVideo(filePath);
         print('✅ iOS: Video saved to photo library successfully');
       } else {
         // For other file types, try to save as image first, then fallback
-        print('📱 iOS: Attempting to save as generic file');
+        print('📱 iOS: Attempting to save as generic file using bytes');
         try {
-          await Gal.putImage(filePath);
+          await Gal.putImageBytes(fileBytes);
           print('✅ iOS: File saved to photo library as image successfully');
         } catch (imageError) {
           print('⚠️ iOS: Failed to save as image: $imageError');
@@ -600,7 +608,14 @@ class DownloadService {
             print('✅ iOS: File saved to photo library as video successfully');
           } catch (videoError) {
             print('⚠️ iOS: Failed to save as video: $videoError');
-            rethrow;
+            // Final fallback - try with file path
+            try {
+              await Gal.putImage(filePath);
+              print('✅ iOS: File saved to photo library as image using file path');
+            } catch (pathError) {
+              print('⚠️ iOS: Failed to save using file path: $pathError');
+              rethrow;
+            }
           }
         }
       }

@@ -1,3 +1,4 @@
+import 'package:share_plus/share_plus.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
@@ -701,5 +702,20 @@ class DownloadProvider extends ChangeNotifier {
   void _setPreviewData(InstagramPostData? data) {
     _previewData = data;
     notifyListeners();
+  }
+
+  /// Share a downloaded file
+  Future<void> shareFile(String filePath) async {
+    try {
+      final file = File(filePath);
+      if (await file.exists()) {
+        await Share.shareXFiles([XFile(filePath)]);
+      } else {
+        throw Exception('File not found: $filePath');
+      }
+    } catch (e) {
+      print('❌ Error sharing file: $e');
+      rethrow;
+    }
   }
 }
