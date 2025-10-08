@@ -544,7 +544,12 @@ class DownloadService {
       }
     }
 
+    // Ensure progress is set to 1.0 and notify UI
     onProgress(1.0);
+    
+    // Add a small delay to ensure UI updates properly on iOS
+    await Future.delayed(Duration(milliseconds: 100));
+    
     return file.path;
   }
 

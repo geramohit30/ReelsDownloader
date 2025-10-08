@@ -138,39 +138,44 @@ class _PreviewScreenState extends State<PreviewScreen> {
       await provider.downloadReel(widget.reelUrl);
       if (!mounted) return;
       
+      // Ensure we properly update the UI state
+      setState(() {
+        _startedDownload = false;
+      });
+      
       // Show success message
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Download completed')));
       
       // For iOS, show additional instructions for gallery access
-      if (Platform.isIOS) {
-        if (mounted) {
-          await showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Text('Download Complete'),
-              content: const Text(
-                'The file has been downloaded to your app documents.\n\n'
-                'To save it to Photos:\n'
-                '1. Open the Files app\n'
-                '2. Navigate to "On My iPhone" > "Reel Downloader"\n'
-                '3. Find your downloaded file\n'
-                '4. Tap the Share button\n'
-                '5. Select "Save to Photos"',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-      }
+      // if (Platform.isIOS) {
+      //   if (mounted) {
+      //     await showDialog(
+      //       context: context,
+      //       builder: (context) => AlertDialog(
+      //         title: const Text('Download Complete'),
+      //         content: const Text(
+      //           'The file has been downloaded to your app documents.\n\n'
+      //           'To save it to Photos:\n'
+      //           '1. Open the Files app\n'
+      //           '2. Navigate to "On My iPhone" > "Reel Downloader"\n'
+      //           '3. Find your downloaded file\n'
+      //           '4. Tap the Share button\n'
+      //           '5. Select "Save to Photos"',
+      //         ),
+      //         actions: [
+      //           TextButton(
+      //             onPressed: () => Navigator.of(context).pop(),
+      //             child: const Text('OK'),
+      //           ),
+      //         ],
+      //       ),
+      //     );
+      //   }
+      // }
       
-      Navigator.of(context).pop(true);
+      // Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
       final message = provider.errorMessage ?? e.toString();

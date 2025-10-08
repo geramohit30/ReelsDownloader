@@ -421,7 +421,10 @@ class DownloadProvider extends ChangeNotifier {
         );
 
         await addItem(reelItem);
-        _activeProgress = null;
+        _activeProgress = 1.0; // Ensure progress shows 100%
+        notifyListeners(); // Notify UI of completion
+        await Future.delayed(Duration(milliseconds: 100)); // Small delay for UI update
+        _activeProgress = null; // Reset progress after delay
         return;
       } catch (e) {
         print('❌ PRIMARY FAILED: Strategy 4 failed for reel: ${e.toString()}');
@@ -454,7 +457,10 @@ class DownloadProvider extends ChangeNotifier {
             );
 
             await addItem(reelItem);
-            _activeProgress = null;
+            _activeProgress = 1.0; // Ensure progress shows 100%
+            notifyListeners(); // Notify UI of completion
+            await Future.delayed(Duration(milliseconds: 100)); // Small delay for UI update
+            _activeProgress = null; // Reset progress after delay
             return;
           } catch (e) {
             print('❌ Local API download failed for reel: ${e.toString()}');
