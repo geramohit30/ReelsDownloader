@@ -159,8 +159,11 @@ class LocalApiService {
 
     // All attempts failed, throw the last exception
     print('❌ ALL ATTEMPTS FAILED: Throwing last exception');
+    
+    // Show a popup to inform the user that the reel is not available
+    // This will be caught by the UI layer to show appropriate message
     throw lastException ?? LocalApiException(
-      'All retry attempts failed',
+      'Reel is not available. Please try again later.',
       type: LocalApiErrorType.unknown,
     );
   }
@@ -254,10 +257,49 @@ class LocalApiService {
         // Handle different status codes
         if (response.statusCode == 200) {
           final result = _handleMultiplePostsResponse(response);
-          print('✅ SUCCESS: API request completed successfully on attempt ${attempt + 1}');
-          return result;
+          
+          // Check if we got any data
+          if (result.allUrls.isNotEmpty) {
+            print('✅ SUCCESS: API request completed successfully on attempt ${attempt + 1}');
+            print('   • Found ${result.allUrls.length} posts');
+            
+            // Check if any of the posts have empty media URLs
+            bool hasValidMedia = false;
+            for (var post in result.allUrls) {
+              if (post.mediaUrl != null && post.mediaUrl!.isNotEmpty) {
+                hasValidMedia = true;
+                break;
+              }
+            }
+            
+            if (!hasValidMedia) {
+              print('⚠️  WARNING: API returned success but all posts have empty media URLs');
+              throw LocalApiException(
+                'Content is not available',
+                type: LocalApiErrorType.noMediaFound,
+              );
+            }
+            
+            return result;
+          } else {
+            print('⚠️  WARNING: API returned success but no posts found');
+            // If no posts found, we might want to retry
+            // But let's not retry indefinitely for this case
+            if (attempt == maxRetries) {
+              return result; // Return empty result if all retries exhausted
+            }
+            // Continue to next attempt
+          }
         } else {
-          return _handleErrorResponse(response);
+          final errorResult = _handleErrorResponse(response);
+          // If it's a non-retryable error, break early
+          if (_isNonRetryableError(errorResult.type)) {
+            throw LocalApiException(
+              errorResult.message,
+              type: errorResult.type,
+            );
+          }
+          // Otherwise continue to retry
         }
       } on SocketException catch (e) {
         lastException = LocalApiException(
@@ -306,8 +348,11 @@ class LocalApiService {
 
     // All attempts failed, throw the last exception
     print('❌ ALL ATTEMPTS FAILED: Throwing last exception');
+    
+    // Show a popup to inform the user that the reel is not available
+    // This will be caught by the UI layer to show appropriate message
     throw lastException ?? LocalApiException(
-      'All retry attempts failed',
+      'Reel is not available. Please try again later.',
       type: LocalApiErrorType.unknown,
     );
   }
@@ -334,6 +379,15 @@ class LocalApiService {
           final firstPost = multiPostData.allUrls[0];
           final mediaUrl = firstPost.mediaUrl;
           final thumbnailUrl = firstPost.isVideo ? firstPost.url : null;
+          
+          // Check if media URL is empty
+          if (mediaUrl == null || mediaUrl.isEmpty) {
+            print('⚠️  SUCCESS RESPONSE BUT EMPTY MEDIA URL IN MULTIPLE POSTS - STOPPING FURTHER API CALLS');
+            throw LocalApiException(
+              'Content is not available',
+              type: LocalApiErrorType.noMediaFound,
+            );
+          }
           
           return InstagramReelData(
             id: _extractReelId(originalUrl),
@@ -375,9 +429,11 @@ class LocalApiService {
           jsonData['user'] as String? ??
           'Unknown';
 
+      // Check if we got a successful response but with empty media URL
       if (mediaUrl == null || mediaUrl.isEmpty) {
+        print('⚠️  SUCCESS RESPONSE BUT EMPTY MEDIA URL - STOPPING FURTHER API CALLS');
         throw LocalApiException(
-          'No media URL found in API response',
+          'Content is not available',
           type: LocalApiErrorType.noMediaFound,
         );
       }

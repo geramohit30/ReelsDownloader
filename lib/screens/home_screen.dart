@@ -78,6 +78,12 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     try {
+      // Immediately set loading state to ensure UI updates
+      provider.setIsFetchingPreview(true);
+      
+      // Add a small delay to ensure UI updates properly
+      await Future.delayed(Duration(milliseconds: 100));
+
       // First check if multiple posts are available
       if (kIsWeb) {
         // For web, check for multiple posts first
@@ -85,17 +91,15 @@ class _HomeScreenState extends State<HomeScreen> {
           final multiPostData = await LocalApiService.fetchMultipleInstagramPosts(input);
           if (multiPostData.allUrls.length > 1) {
             // Navigate to multi-post screen
-            final result = await Navigator.push(
+            await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => MultiPostScreen(reelUrl: input),
               ),
             );
 
-            // If download was successful, clear the input
-            if (result == true) {
-              _ctrl.clear();
-            }
+            // Clear the input after navigating to multi-post screen
+            _ctrl.clear();
             return;
           }
         } catch (e) {
@@ -119,7 +123,7 @@ class _HomeScreenState extends State<HomeScreen> {
         });
       } else {
         // Navigate to preview screen for mobile
-        final result = await Navigator.push(
+        await Navigator.push(
           context,
           MaterialPageRoute(
             builder:
@@ -127,14 +131,15 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         );
 
-        // If download was successful, clear the input
-        if (result == true) {
-          _ctrl.clear();
-        }
+        // Clear the input after navigating to preview screen
+        _ctrl.clear();
       }
     } catch (e) {
       if (!mounted) return;
 
+      // Check if it's the specific "not available" error
+      final isNotAvailable = e.toString().contains('not available');
+      
       final isNetworkError =
           e.toString().contains('SocketException') ||
               e.toString().contains('Failed host lookup') ||
@@ -147,7 +152,9 @@ class _HomeScreenState extends State<HomeScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Error: ${e.toString()}'),
+              Text(isNotAvailable 
+                ? 'Content is not available' 
+                : 'Error: ${e.toString()}'),
               if (isNetworkError) ...[
                 const SizedBox(height: 8),
                 TextButton(
@@ -167,11 +174,15 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ],
           ),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: isNetworkError ? 8 : 5),
+          backgroundColor: isNotAvailable ? Colors.orange : Colors.red,
+          duration: Duration(seconds: isNetworkError ? 8 : (isNotAvailable ? 5 : 5)),
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } finally {
+      // Ensure loading state is cleared
+      final provider = context.read<DownloadProvider>();
+      provider.setIsFetchingPreview(false);
     }
   }
 
@@ -220,8 +231,10 @@ class _HomeScreenState extends State<HomeScreen> {
                           _buildUrlInputCard(theme, isBusy),
                           const SizedBox(height: 24),
                           _buildDownloadButton(theme, isBusy, provider),
-                          if (isBusy) ..._buildProgressIndicator(
-                              theme, progress, provider),
+                          if (isBusy) ...[
+                            const SizedBox(height: 24),
+                            ..._buildProgressIndicator(theme, progress, provider),
+                          ],
                           const SizedBox(height: 40),
                           _buildRecentDownloads(theme, provider),
                         ],
@@ -521,7 +534,6 @@ class _HomeScreenState extends State<HomeScreen> {
       double? progress,
       DownloadProvider provider,) {
     return [
-      const SizedBox(height: 24),
       Card(
         color: theme.cardColor,
         elevation: 0.5,
@@ -791,10 +803,13 @@ class _HomeScreenState extends State<HomeScreen> {
                   _buildUrlInputCard(theme, isBusy),
                   const SizedBox(height: 24),
                   _buildDownloadButton(theme, isBusy, provider),
-                  if (isBusy) ..._buildProgressIndicator(
-                      theme, progress, provider),
+                  if (isBusy) ...[
+                    const SizedBox(height: 24),
+                    ..._buildProgressIndicator(theme, progress, provider),
+                  ],
                   // Add preview content for web directly below download button
                   if (provider.previewData != null) ...[
+                    // Check if we have valid data to show
                     const SizedBox(height: 24),
                     _buildWebPreview(
                         provider.previewData!, theme, context, provider),
@@ -1129,6 +1144,15 @@ class _HomeScreenState extends State<HomeScreen> {
       ThemeData theme,
       BuildContext context,
       DownloadProvider provider,) {
+    // Check if we have valid data to show
+    final hasValidData = (postData.displayUrl != null && postData.displayUrl!.isNotEmpty) ||
+        (postData.videoUrl != null && postData.videoUrl!.isNotEmpty);
+    
+    // If no valid data, don't show the preview at all
+    if (!hasValidData) {
+      return Container(); // Return empty container instead of showing preview UI
+    }
+
     return Card(
       color: theme.cardColor,
       elevation: 0.5,
@@ -1142,7 +1166,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(
                   maxWidth: 300, // keeps reel compact on desktop
-                  maxHeight: 500, // don’t let it blow up vertically
+                  maxHeight: 500, // don't let it blow up vertically
                 ),
                 child: AspectRatio(
                   aspectRatio: 9 / 16, // Instagram reel ratio

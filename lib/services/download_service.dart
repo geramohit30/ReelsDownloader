@@ -7,6 +7,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:media_scanner/media_scanner.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:image_gallery_saver/image_gallery_saver.dart';
+
 import '../models/reel_item.dart';
 import '../models/instagram_types.dart';
 import '../models/instagram_multi_post_data.dart';
@@ -223,14 +225,27 @@ class DownloadService {
         // First try to get multiple posts
         final multiPostData = await LocalApiService.fetchMultipleInstagramPosts(reelUrl);
         
-        // Check if we have multiple posts
-        if (multiPostData.allUrls.length > 1) {
-          print('🟢 ✅ MULTIPLE POSTS FOUND: ${multiPostData.allUrls.length} items');
-          // For now, we'll use the first post for backward compatibility
-          // In the future, we can implement UI to show all posts
+        // Check if we have any posts
+        if (multiPostData.allUrls.isNotEmpty) {
+          print('🟢 ✅ POSTS FOUND: ${multiPostData.allUrls.length} items');
+          
+          // If we have multiple posts, use the first one for backward compatibility
+          if (multiPostData.allUrls.length > 1) {
+            print('   • Multiple posts detected');
+          } else {
+            print('   • Single post detected');
+          }
+          
+          // Use the first post
           final firstPost = multiPostData.allUrls[0];
           final mediaUrl = firstPost.mediaUrl;
           final thumbnailUrl = firstPost.isVideo ? firstPost.url : null;
+          
+          // Check if media URL is empty
+          if (mediaUrl.isEmpty) {
+            print('⚠️  EMPTY MEDIA URL FROM API - CONTENT NOT AVAILABLE');
+            throw Exception('Content is not available');
+          }
           
           return InstagramPostData(
             videoUrl: firstPost.isVideo ? mediaUrl : null,
@@ -238,23 +253,16 @@ class DownloadService {
             isVideo: firstPost.isVideo,
             shortcode: _extractShortcodeFromUrl(reelUrl),
           );
-        } else if (multiPostData.allUrls.length == 1) {
-          print('🟢 ✅ SINGLE POST FOUND');
-          // Handle single post case
-          final post = multiPostData.allUrls[0];
-          final mediaUrl = post.mediaUrl;
-          final thumbnailUrl = post.isVideo ? post.url : null;
-          
-          return InstagramPostData(
-            videoUrl: post.isVideo ? mediaUrl : null,
-            displayUrl: post.isVideo ? thumbnailUrl : mediaUrl,
-            isVideo: post.isVideo,
-            shortcode: _extractShortcodeFromUrl(reelUrl),
-          );
         } else {
           // Fallback to original method if no posts found
           print('🟡 NO POSTS FOUND, FALLING BACK TO ORIGINAL METHOD');
           final reelData = await LocalApiService.fetchInstagramReel(reelUrl);
+          
+          // Check if media URL is empty
+          if (reelData.mediaUrl.isEmpty) {
+            print('⚠️  EMPTY MEDIA URL FROM API - CONTENT NOT AVAILABLE');
+            throw Exception('Content is not available');
+          }
           
           // For videos, we need to distinguish between thumbnail and video URL
           // If thumbnailUrl is available, use it for display
@@ -278,6 +286,12 @@ class DownloadService {
           );
         }
       } catch (e) {
+        // Check if it's the specific "unavailable" error
+        if (e.toString().contains('not available')) {
+          print('🔴 CONTENT NOT AVAILABLE: $e');
+          throw Exception('Content is not available');
+        }
+        
         print('🔴 API FALLBACK FAILED: $e');
         throw Exception('Both Strategy 4 and API fallback failed: $e');
       }
@@ -522,51 +536,111 @@ class DownloadService {
     // Mobile/Desktop implementation - save to gallery-visible directory
     print('📱 MOBILE MODE: Saving to gallery for ${suggestedName ?? 'media'}');
     
-    // Force use of public Downloads directory with Instagram Reels subdirectory
-    // Skip getDownloadsDirectory() as it often returns app-private directory
-    Directory appDownloadsDir = Directory('/storage/emulated/0/Download/Instagram Reels');
-    print('📁 Using forced public Downloads directory with Instagram Reels subdirectory: ${appDownloadsDir.path}');
+    // Platform-specific directory handling
+    Directory appDownloadsDir;
+    
+    if (Platform.isIOS) {
+      // For iOS, use the app's documents directory
+      // iOS doesn't allow direct access to system Downloads directory
+      final documentsDir = await getApplicationDocumentsDirectory();
+      appDownloadsDir = Directory('${documentsDir.path}/Downloads/Instagram Reels');
+      print('📁 Using iOS Documents directory: ${appDownloadsDir.path}');
+    } else if (Platform.isAndroid) {
+      // For Android, use the public Downloads directory
+      // Force use of public Downloads directory with Instagram Reels subdirectory
+      // Skip getDownloadsDirectory() as it often returns app-private directory
+      appDownloadsDir = Directory('/storage/emulated/0/Download/Instagram Reels');
+      print('📁 Using forced public Downloads directory with Instagram Reels subdirectory: ${appDownloadsDir.path}');
+    } else {
+      // For other platforms, use getDownloadsDirectory
+      try {
+        final fallbackDir = await getDownloadsDirectory();
+        if (fallbackDir != null) {
+          appDownloadsDir = Directory('${fallbackDir.path}/Instagram Reels');
+        } else {
+          final documentsDir = await getApplicationDocumentsDirectory();
+          appDownloadsDir = Directory('${documentsDir.path}/Downloads/Instagram Reels');
+        }
+        print('📁 Using platform-specific Downloads directory: ${appDownloadsDir.path}');
+      } catch (e) {
+        print('⚠️ Failed to get platform-specific directory: $e');
+        final documentsDir = await getApplicationDocumentsDirectory();
+        appDownloadsDir = Directory('${documentsDir.path}/Downloads/Instagram Reels');
+        print('📁 Using app documents directory as fallback: ${appDownloadsDir.path}');
+      }
+    }
     
     // Check if Downloads directory exists, if not try to create it
     if (!await appDownloadsDir.exists()) {
       try {
         await appDownloadsDir.create(recursive: true);
-        print('📁 Created public Downloads directory with Instagram Reels subdirectory: ${appDownloadsDir.path}');
+        print('📁 Created downloads directory with Instagram Reels subdirectory: ${appDownloadsDir.path}');
       } catch (e) {
-        print('⚠️ Failed to create public Downloads directory with Instagram Reels subdirectory: $e');
-        // Fallback to main Downloads directory
-        appDownloadsDir = Directory('/storage/emulated/0/Download');
+        print('⚠️ Failed to create downloads directory with Instagram Reels subdirectory: $e');
+        // Fallback to simpler directory structure
+        if (Platform.isIOS) {
+          // For iOS, use the main Documents directory
+          final documentsDir = await getApplicationDocumentsDirectory();
+          appDownloadsDir = documentsDir;
+          print('📁 Using iOS Documents directory as fallback: ${appDownloadsDir.path}');
+        } else if (Platform.isAndroid) {
+          // For Android, fallback to main Downloads directory
+          appDownloadsDir = Directory('/storage/emulated/0/Download');
+          if (!await appDownloadsDir.exists()) {
+            try {
+              await appDownloadsDir.create(recursive: true);
+              print('📁 Created public Downloads directory: ${appDownloadsDir.path}');
+            } catch (e2) {
+              print('⚠️ Failed to create public Downloads directory: $e2');
+              // Fallback to getDownloadsDirectory() if forced path fails
+              try {
+                final fallbackDir = await getDownloadsDirectory();
+                if (fallbackDir != null && await fallbackDir.exists()) {
+                  appDownloadsDir = fallbackDir;
+                  print('📁 Using fallback Downloads directory: ${appDownloadsDir.path}');
+                } else {
+                  // Final fallback to app documents directory
+                  final documentsDir = await getApplicationDocumentsDirectory();
+                  appDownloadsDir = documentsDir;
+                  print('📁 Using app documents directory: ${appDownloadsDir.path}');
+                }
+              } catch (fallbackError) {
+                print('⚠️ All directory methods failed: $fallbackError');
+                // Last resort: use app documents directory
+                final documentsDir = await getApplicationDocumentsDirectory();
+                appDownloadsDir = documentsDir;
+                print('📁 Using last resort app documents directory: ${appDownloadsDir.path}');
+              }
+            }
+          }
+        } else {
+          // For other platforms, try getDownloadsDirectory()
+          try {
+            final fallbackDir = await getDownloadsDirectory();
+            if (fallbackDir != null && await fallbackDir.exists()) {
+              appDownloadsDir = fallbackDir;
+              print('📁 Using platform fallback Downloads directory: ${appDownloadsDir.path}');
+            } else {
+              final documentsDir = await getApplicationDocumentsDirectory();
+              appDownloadsDir = documentsDir;
+              print('📁 Using app documents directory: ${appDownloadsDir.path}');
+            }
+          } catch (fallbackError) {
+            print('⚠️ Platform directory methods failed: $fallbackError');
+            final documentsDir = await getApplicationDocumentsDirectory();
+            appDownloadsDir = documentsDir;
+            print('📁 Using app documents directory as last resort: ${appDownloadsDir.path}');
+          }
+        }
+        
+        // Ensure the fallback directory exists
         if (!await appDownloadsDir.exists()) {
           try {
             await appDownloadsDir.create(recursive: true);
-            print('📁 Created public Downloads directory: ${appDownloadsDir.path}');
+            print('📁 Created fallback directory: ${appDownloadsDir.path}');
           } catch (e2) {
-            print('⚠️ Failed to create public Downloads directory: $e2');
-            // Fallback to getDownloadsDirectory() if forced path fails
-            try {
-              final fallbackDir = await getDownloadsDirectory();
-              if (fallbackDir != null && await fallbackDir.exists()) {
-                appDownloadsDir = fallbackDir;
-                print('📁 Using fallback Downloads directory: ${appDownloadsDir.path}');
-              } else {
-                // Final fallback to app documents directory
-                final documentsDir = await getApplicationDocumentsDirectory();
-                appDownloadsDir = Directory('${documentsDir.path}/Downloads');
-                if (!await appDownloadsDir.exists()) {
-                  await appDownloadsDir.create(recursive: true);
-                }
-                print('📁 Using app documents directory: ${appDownloadsDir.path}');
-              }
-            } catch (fallbackError) {
-              print('⚠️ All directory methods failed: $fallbackError');
-              // Last resort: use app documents directory
-              final documentsDir = await getApplicationDocumentsDirectory();
-              appDownloadsDir = Directory('${documentsDir.path}/Downloads');
-              if (!await appDownloadsDir.exists()) {
-                await appDownloadsDir.create(recursive: true);
-              }
-              print('📁 Using last resort app documents directory: ${appDownloadsDir.path}');
-            }
+            print('⚠️ Failed to create fallback directory: $e2');
+            throw Exception('Failed to create download directory. Please check app permissions.');
           }
         }
       }
@@ -601,23 +675,38 @@ class DownloadService {
     await sink.flush();
     await sink.close();
 
-    // Notify media scanner to make the file visible in gallery
-    try {
-      await MediaScanner.loadMedia(path: file.path);
-      print('✅ Media scanner notified for: ${file.path}');
-    } catch (e) {
-      print('⚠️ Failed to notify media scanner: $e');
-      // Fallback: try to save to the root Downloads directory for better visibility
-      await _saveToRootDownloads(file, name);
-    }
+    // Platform-specific gallery visibility handling
+    if (Platform.isIOS) {
+      // For iOS, use ImageGallerySaver to make files visible in Photos app
+      try {
+        final result = await ImageGallerySaver.saveFile(file.path);
+        if (result['isSuccess'] == true) {
+          print('✅ iOS: File saved to Photos gallery successfully');
+        } else {
+          print('⚠️ iOS: Failed to save to Photos gallery: ${result['errorMessage']}');
+        }
+      } catch (e) {
+        print('⚠️ iOS: Error saving to Photos gallery: $e');
+      }
+    } else {
+      // For Android and other platforms, use MediaScanner
+      try {
+        await MediaScanner.loadMedia(path: file.path);
+        print('✅ Media scanner notified for: ${file.path}');
+      } catch (e) {
+        print('⚠️ Failed to notify media scanner: $e');
+        // Fallback: try to save to the root Downloads directory for better visibility
+        await _saveToRootDownloads(file, name);
+      }
 
-    // Additional fallback: scan the directory
-    try {
-      final directory = file.parent;
-      await MediaScanner.loadMedia(path: directory.path);
-      print('🔄 Directory scanned for media');
-    } catch (e) {
-      print('⚠️ Failed to scan directory: $e');
+      // Additional fallback: scan the directory
+      try {
+        final directory = file.parent;
+        await MediaScanner.loadMedia(path: directory.path);
+        print('🔄 Directory scanned for media');
+      } catch (e) {
+        print('⚠️ Failed to scan directory: $e');
+      }
     }
 
     onProgress(1.0);
@@ -627,28 +716,60 @@ class DownloadService {
   /// Fallback method to save to root Downloads directory for better gallery visibility
   Future<void> _saveToRootDownloads(File originalFile, String fileName) async {
     try {
-      // Try to get the public Downloads directory with Instagram Reels subdirectory
-      Directory? downloadsDir = Directory('/storage/emulated/0/Download/Instagram Reels');
+      // Platform-specific handling
+      if (Platform.isIOS) {
+        // For iOS, we can't save to system Downloads directory
+        // Instead, ensure the file is properly saved using ImageGallerySaver
+        try {
+          final result = await ImageGallerySaver.saveFile(originalFile.path);
+          if (result['isSuccess'] == true) {
+            print('✅ iOS Fallback: File saved to Photos gallery successfully');
+          } else {
+            print('⚠️ iOS Fallback: Failed to save to Photos gallery: ${result['errorMessage']}');
+          }
+        } catch (e) {
+          print('⚠️ iOS Fallback: Error saving to Photos gallery: $e');
+        }
+        return;
+      }
+      
+      // For Android and other platforms
+      Directory? downloadsDir;
+      
+      if (Platform.isAndroid) {
+        // Try to get the public Downloads directory with Instagram Reels subdirectory
+        downloadsDir = Directory('/storage/emulated/0/Download/Instagram Reels');
+      } else {
+        // For other platforms, try getDownloadsDirectory()
+        try {
+          downloadsDir = await getDownloadsDirectory();
+        } catch (e) {
+          print('⚠️ Failed to get Downloads directory in fallback: $e');
+          return; // Give up if we can't get any directory
+        }
+      }
       
       // Ensure directory exists
-      if (!await downloadsDir.exists()) {
+      if (downloadsDir != null && !await downloadsDir.exists()) {
         try {
           await downloadsDir.create(recursive: true);
         } catch (e) {
           print('⚠️ Failed to create Instagram Reels subdirectory in fallback: $e');
           // Fallback to main Downloads directory
-          downloadsDir = Directory('/storage/emulated/0/Download');
-          if (!await downloadsDir.exists()) {
-            try {
-              await downloadsDir.create(recursive: true);
-            } catch (e2) {
-              print('⚠️ Failed to create Downloads directory in fallback: $e2');
-              // Try getDownloadsDirectory() as last resort
+          if (Platform.isAndroid) {
+            downloadsDir = Directory('/storage/emulated/0/Download');
+            if (!await downloadsDir.exists()) {
               try {
-                downloadsDir = await getDownloadsDirectory();
-              } catch (e3) {
-                print('⚠️ Failed to get Downloads directory in fallback: $e3');
-                return; // Give up if we can't get any directory
+                await downloadsDir.create(recursive: true);
+              } catch (e2) {
+                print('⚠️ Failed to create Downloads directory in fallback: $e2');
+                // Try getDownloadsDirectory() as last resort
+                try {
+                  downloadsDir = await getDownloadsDirectory();
+                } catch (e3) {
+                  print('⚠️ Failed to get Downloads directory in fallback: $e3');
+                  return; // Give up if we can't get any directory
+                }
               }
             }
           }

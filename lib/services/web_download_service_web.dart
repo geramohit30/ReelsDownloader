@@ -15,9 +15,12 @@ Future<String> downloadMediaWeb({
 
     // Start progress
     onProgress(0.0);
+    
+    // Add a small delay to ensure UI updates properly
+    await Future.delayed(Duration(milliseconds: 200));
 
     // Use XMLHttpRequest to download content and force download
-    await _xmlHttpRequestDownload(mediaUrl, fileName);
+    await _xmlHttpRequestDownload(mediaUrl, fileName, onProgress);
     
     onProgress(1.0);
     print('✅ WEB DOWNLOAD: Direct download triggered for $fileName');
@@ -33,7 +36,8 @@ Future<String> downloadMediaWeb({
 }
 
 /// Use XMLHttpRequest to download content and force download
-Future<void> _xmlHttpRequestDownload(String mediaUrl, String fileName) async {
+Future<void> _xmlHttpRequestDownload(String mediaUrl, String fileName, 
+    void Function(double progress) onProgress) async {
   print('   • Using XMLHttpRequest method for: $fileName');
   print('   • Media URL: $mediaUrl');
   
@@ -42,6 +46,27 @@ Future<void> _xmlHttpRequestDownload(String mediaUrl, String fileName) async {
     final xhr = html.HttpRequest();
     xhr.open('GET', mediaUrl);
     xhr.responseType = 'blob'; // Important: set response type to blob
+    
+    // Track progress with better error handling
+    xhr.onProgress.listen((event) {
+      try {
+        if (event.lengthComputable && event.total != null && event.total! > 0) {
+          final loaded = event.loaded ?? 0;
+          final total = event.total ?? 1;
+          if (total > 0) {
+            final progress = loaded / total;
+            // Ensure progress is between 0 and 1
+            final clampedProgress = progress.clamp(0.0, 1.0);
+            onProgress(clampedProgress);
+            print('   • Progress: ${(clampedProgress * 100).toStringAsFixed(1)}% ($loaded/$total)');
+          }
+        }
+      } catch (e) {
+        print('   • Error in progress handler: $e');
+      }
+    }, onError: (error) {
+      print('   • Progress tracking error: $error');
+    });
     
     // Set up onload handler
     xhr.onLoad.first.then((_) {
@@ -73,7 +98,7 @@ Future<void> _xmlHttpRequestDownload(String mediaUrl, String fileName) async {
       } else {
         print('   • ❌ XMLHttpRequest failed with status: ${xhr.status}');
         // Try fallback method
-        _fallbackDownload(mediaUrl, fileName);
+        _fallbackDownload(mediaUrl, fileName, onProgress);
       }
     });
     
@@ -81,20 +106,27 @@ Future<void> _xmlHttpRequestDownload(String mediaUrl, String fileName) async {
     xhr.onError.first.then((_) {
       print('   • ❌ XMLHttpRequest error occurred');
       // Try fallback method
-      _fallbackDownload(mediaUrl, fileName);
+      _fallbackDownload(mediaUrl, fileName, onProgress);
     });
     
     // Send the request
     xhr.send();
+    
+    // Wait for the request to complete with a timeout
+    await xhr.onLoad.first.timeout(Duration(seconds: 30), onTimeout: () {
+      print('   • XMLHttpRequest timeout after 30 seconds');
+      throw TimeoutException('Request timed out', Duration(seconds: 30));
+    });
   } catch (e) {
     print('   • ❌ XMLHttpRequest failed: $e');
     // Try fallback method
-    _fallbackDownload(mediaUrl, fileName);
+    _fallbackDownload(mediaUrl, fileName, onProgress);
   }
 }
 
 /// Fallback download method
-void _fallbackDownload(String mediaUrl, String fileName) {
+void _fallbackDownload(String mediaUrl, String fileName, 
+    void Function(double progress) onProgress) {
   try {
     print('   • Trying fallback method with modified headers');
     
@@ -102,6 +134,27 @@ void _fallbackDownload(String mediaUrl, String fileName) {
     final xhr = html.HttpRequest();
     xhr.open('GET', mediaUrl);
     xhr.responseType = 'blob';
+    
+    // Track progress with better error handling
+    xhr.onProgress.listen((event) {
+      try {
+        if (event.lengthComputable && event.total != null && event.total! > 0) {
+          final loaded = event.loaded ?? 0;
+          final total = event.total ?? 1;
+          if (total > 0) {
+            final progress = loaded / total;
+            // Ensure progress is between 0 and 1
+            final clampedProgress = progress.clamp(0.0, 1.0);
+            onProgress(clampedProgress);
+            print('   • Fallback Progress: ${(clampedProgress * 100).toStringAsFixed(1)}% ($loaded/$total)');
+          }
+        }
+      } catch (e) {
+        print('   • Error in fallback progress handler: $e');
+      }
+    }, onError: (error) {
+      print('   • Fallback progress tracking error: $error');
+    });
     
     // Try to set headers that might help with download
     try {
@@ -132,24 +185,25 @@ void _fallbackDownload(String mediaUrl, String fileName) {
       } else {
         print('   • ❌ Fallback XMLHttpRequest failed with status: ${xhr.status}');
         // Last resort: try simple anchor
-        _lastResortDownload(mediaUrl, fileName);
+        _lastResortDownload(mediaUrl, fileName, onProgress);
       }
     });
     
     xhr.onError.first.then((_) {
       print('   • ❌ Fallback XMLHttpRequest error occurred');
-      _lastResortDownload(mediaUrl, fileName);
+      _lastResortDownload(mediaUrl, fileName, onProgress);
     });
     
     xhr.send();
   } catch (e) {
     print('   • ❌ Fallback XMLHttpRequest failed: $e');
-    _lastResortDownload(mediaUrl, fileName);
+    _lastResortDownload(mediaUrl, fileName, onProgress);
   }
 }
 
 /// Last resort download method
-void _lastResortDownload(String mediaUrl, String fileName) {
+void _lastResortDownload(String mediaUrl, String fileName, 
+    void Function(double progress) onProgress) {
   try {
     print('   • Trying last resort method');
     

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/instagram_multi_post_data.dart';
+import '../models/instagram_types.dart';
 import '../models/reel_item.dart';
 import '../providers/download_provider.dart';
+import '../screens/preview_screen.dart';
 import '../services/download_service.dart';
 import '../services/local_api_service.dart';
 import '../services/instagram_utils.dart';
@@ -31,10 +33,18 @@ class _MultiPostScreenState extends State<MultiPostScreen> {
   @override
   void initState() {
     super.initState();
+    print('🟢 MULTI POST: Initializing MultiPostScreen');
     _loadMultiPostData();
   }
 
+  @override
+  void dispose() {
+    print('🔴 MULTI POST: Disposing MultiPostScreen');
+    super.dispose();
+  }
+
   Future<void> _loadMultiPostData() async {
+    print('🔍 MULTI POST: Loading multi-post data for URL: ${widget.reelUrl}');
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -42,13 +52,29 @@ class _MultiPostScreenState extends State<MultiPostScreen> {
 
     try {
       final data = await LocalApiService.fetchMultipleInstagramPosts(widget.reelUrl);
-      if (mounted) {
-        setState(() {
-          _multiPostData = data;
-          _isLoading = false;
-        });
+      print('✅ MULTI POST: Loaded ${data.allUrls.length} posts');
+      
+      // Check if we got any data
+      if (data.allUrls.isNotEmpty) {
+        if (mounted) {
+          setState(() {
+            _multiPostData = data;
+            _isLoading = false;
+          });
+          print('🟢 MULTI POST: Data loaded successfully and UI updated');
+        }
+      } else {
+        // If no data found, try alternative approaches or show error
+        print('⚠️ MULTI POST: No posts found in response');
+        if (mounted) {
+          setState(() {
+            _errorMessage = 'No posts found for this URL';
+            _isLoading = false;
+          });
+        }
       }
     } catch (e) {
+      print('❌ MULTI POST: Error loading multi-post data: $e');
       if (mounted) {
         setState(() {
           _errorMessage = e.toString();
@@ -59,7 +85,11 @@ class _MultiPostScreenState extends State<MultiPostScreen> {
   }
 
   Future<void> _downloadAllPosts() async {
-    if (_multiPostData == null) return;
+    print('📥 MULTI POST: Starting download of all posts');
+    if (_multiPostData == null) {
+      print('❌ MULTI POST: No data available for download');
+      return;
+    }
 
     setState(() {
       _isDownloading = true;
@@ -68,6 +98,7 @@ class _MultiPostScreenState extends State<MultiPostScreen> {
 
     try {
       final provider = context.read<DownloadProvider>();
+      print('🚀 MULTI POST: Downloading ${_multiPostData!.allUrls.length} posts');
       
       // Download all posts
       final items = await _downloadService.downloadAllInstagramPosts(
@@ -78,26 +109,36 @@ class _MultiPostScreenState extends State<MultiPostScreen> {
           });
         },
         onItemProgress: (current, total) {
+          print('📥 MULTI POST: Downloading item $current of $total');
           setState(() {
             _downloadingIndex = current;
           });
         },
       );
 
+      print('✅ MULTI POST: Downloaded ${items.length} items');
+      
       // Add all items to the download list
       for (final item in items) {
         await provider.addItem(item);
       }
 
       if (mounted) {
+        print('✅ MULTI POST: All posts downloaded successfully, showing snackbar');
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('All posts downloaded successfully')),
         );
         
-        // Close the screen and return to home
-        Navigator.of(context).pop(true);
+        // Don't pop the screen - just reset the downloading state
+        // Let the user decide when to go back
+        setState(() {
+          _isDownloading = false;
+          _downloadingIndex = null;
+          _downloadProgress = null;
+        });
       }
     } catch (e) {
+      print('❌ MULTI POST: Download failed with error: $e');
       if (mounted) {
         setState(() {
           _errorMessage = e.toString();
@@ -114,12 +155,17 @@ class _MultiPostScreenState extends State<MultiPostScreen> {
           _downloadingIndex = null;
           _downloadProgress = null;
         });
+        print('🔄 MULTI POST: Download state reset');
       }
     }
   }
 
   Future<void> _downloadSinglePost(int index) async {
-    if (_multiPostData == null || index >= _multiPostData!.allUrls.length) return;
+    print('📥 MULTI POST: Starting download of single post at index $index');
+    if (_multiPostData == null || index >= _multiPostData!.allUrls.length) {
+      print('❌ MULTI POST: Invalid index or no data available for download');
+      return;
+    }
 
     setState(() {
       _isDownloading = true;
@@ -130,6 +176,7 @@ class _MultiPostScreenState extends State<MultiPostScreen> {
     try {
       final provider = context.read<DownloadProvider>();
       final post = _multiPostData!.allUrls[index];
+      print('🚀 MULTI POST: Downloading post $index: ${post.mediaUrl}');
       
       // Create a temporary URL for this specific post
       final mediaUrl = post.mediaUrl;
@@ -163,38 +210,51 @@ class _MultiPostScreenState extends State<MultiPostScreen> {
       await provider.addItem(reelItem);
 
       if (mounted) {
+        print('✅ MULTI POST: Post $index downloaded successfully, showing snackbar');
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Post ${index + 1} downloaded successfully')),
         );
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = e.toString();
-        });
         
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Download failed: $e')),
-        );
-      }
-    } finally {
-      if (mounted) {
+        // Don't pop the screen - just reset the downloading state
+        // Let the user decide when to go back
         setState(() {
           _isDownloading = false;
           _downloadingIndex = null;
           _downloadProgress = null;
         });
       }
+    } catch (e) {
+      print('❌ MULTI POST: Download of post $index failed with error: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString();
+          _isDownloading = false;
+          _downloadingIndex = null;
+          _downloadProgress = null;
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Download failed: $e')),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    print('🔄 MULTI POST: Building MultiPostScreen, isLoading: $_isLoading, hasError: ${_errorMessage != null}');
     final theme = Theme.of(context);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Multiple Posts'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            print('🔙 MULTI POST: Back button pressed, popping screen');
+            Navigator.of(context).pop();
+          },
+        ),
         actions: [
           if (_multiPostData != null && !_isDownloading)
             TextButton(
@@ -243,6 +303,18 @@ class _MultiPostScreenState extends State<MultiPostScreen> {
                       )
                     : _buildContent(theme),
       ),
+      bottomNavigationBar: _multiPostData != null && !_isLoading
+          ? Container(
+              padding: const EdgeInsets.all(16),
+              child: ElevatedButton(
+                onPressed: () {
+                  print('🔙 MULTI POST: Done button pressed, popping screen');
+                  Navigator.of(context).pop();
+                },
+                child: const Text('Done'),
+              ),
+            )
+          : null,
     );
   }
 
@@ -364,6 +436,18 @@ class _MultiPostScreenState extends State<MultiPostScreen> {
                           ),
                         ),
                       ),
+                    
+                    // Tap to preview - Place this last so it's on top
+                    Positioned.fill(
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: isDownloadingCurrent
+                              ? null
+                              : () => _previewPost(index),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               );
@@ -372,5 +456,33 @@ class _MultiPostScreenState extends State<MultiPostScreen> {
         ),
       ],
     );
+  }
+
+  /// Preview a specific post
+  Future<void> _previewPost(int index) async {
+    if (_multiPostData == null || index >= _multiPostData!.allUrls.length) return;
+
+    final post = _multiPostData!.allUrls[index];
+    
+    // Create InstagramPostData for preview
+    final postData = InstagramPostData(
+      id: 'post_$index',
+      videoUrl: post.isVideo ? post.mediaUrl : null,
+      displayUrl: post.url,
+      isVideo: post.isVideo,
+    );
+
+    // Navigate to preview screen
+    if (mounted) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => PreviewScreen(
+            reelUrl: widget.reelUrl,
+            postData: postData,
+          ),
+        ),
+      );
+    }
   }
 }

@@ -47,6 +47,9 @@ class DownloadProvider extends ChangeNotifier {
     _isFetchingPreview = true;
     _errorMessage = null;
     notifyListeners();
+    
+    // Add a small delay to ensure UI updates properly
+    await Future.delayed(Duration(milliseconds: 150));
 
     try {
       // Check content type to determine strategy
@@ -91,6 +94,12 @@ class DownloadProvider extends ChangeNotifier {
       print('   • Media URL contains .jpg: ${reelData.mediaUrl.toLowerCase().contains('.jpg')}');
       print('   • Media URL contains .mp4: ${reelData.mediaUrl.toLowerCase().contains('.mp4')}');
 
+      // Check if media URL is empty (unavailable)
+      if (reelData.mediaUrl.isEmpty) {
+        print('⚠️  EMPTY MEDIA URL FROM API - CONTENT NOT AVAILABLE');
+        throw Exception('Content is not available');
+      }
+
       // Detect content type from URL (JPG = story, MP4 = reel)
       final isStoryContent = reelData.mediaUrl.toLowerCase().contains('.jpg');
       print('   • Content Type: ${isStoryContent ? "Story (JPG)" : "Reel (MP4)"}');
@@ -130,6 +139,13 @@ class DownloadProvider extends ChangeNotifier {
     } catch (e) {
       print('❌ Local API failed: ${e.toString()}');
 
+      // Check if it's the specific "unavailable" error
+      if (e.toString().contains('not available')) {
+        print('🔴 CONTENT NOT AVAILABLE: $e');
+        _errorMessage = 'Content is not available';
+        rethrow;
+      }
+
       // Only allow fallback for reels
       final isReel = InstagramUtils.isReelUrl(reelUrl);
       if (isReel) {
@@ -162,6 +178,8 @@ class DownloadProvider extends ChangeNotifier {
     } finally {
       _isFetchingPreview = false;
       notifyListeners();
+      // Add a small delay to ensure UI updates properly
+      await Future.delayed(const Duration(milliseconds: 100));
     }
   }
 
@@ -295,6 +313,9 @@ class DownloadProvider extends ChangeNotifier {
     _errorMessage = null;
     _previewData = null; // Clear previous preview data
     notifyListeners();
+    
+    // Add a small delay to ensure UI updates properly
+    await Future.delayed(Duration(milliseconds: 150));
 
     try {
       // Check if this is a reel or other content type
@@ -312,6 +333,16 @@ class DownloadProvider extends ChangeNotifier {
       if (!isReel) {
         print('🎯 NON-REEL CONTENT: Using API-only strategy (no scraping fallback)');
         final postData = await _fetchFromApiOnly(reelUrl);
+        
+        // Check if we have valid data
+        final hasValidData = (postData.displayUrl != null && postData.displayUrl!.isNotEmpty) ||
+            (postData.videoUrl != null && postData.videoUrl!.isNotEmpty);
+            
+        if (!hasValidData) {
+          print('⚠️  NO VALID DATA FOUND - CONTENT NOT AVAILABLE');
+          throw Exception('Content is not available');
+        }
+        
         _previewData = postData; // Store preview data
         print('✅ NON-REEL PREVIEW DATA STORED:');
         print('   - isVideo: ${postData.isVideo}');
@@ -325,6 +356,16 @@ class DownloadProvider extends ChangeNotifier {
       try {
         // Use the download service's new method which prioritizes Strategy 4
         final postData = await _downloadService.getPostDataWithStrategy4Priority(reelUrl);
+        
+        // Check if we have valid data
+        final hasValidData = (postData.displayUrl != null && postData.displayUrl!.isNotEmpty) ||
+            (postData.videoUrl != null && postData.videoUrl!.isNotEmpty);
+            
+        if (!hasValidData) {
+          print('⚠️  NO VALID DATA FOUND - CONTENT NOT AVAILABLE');
+          throw Exception('Content is not available');
+        }
+        
         print('✅ PRIMARY SUCCESS: Strategy 4 returned data for reel preview');
         _previewData = postData; // Store preview data
         print('✅ REEL PREVIEW DATA STORED:');
@@ -338,6 +379,16 @@ class DownloadProvider extends ChangeNotifier {
 
         // If Strategy 4 fails for reels, try Local API as fallback
         final postData = await _fetchFromApiOnly(reelUrl);
+        
+        // Check if we have valid data
+        final hasValidData = (postData.displayUrl != null && postData.displayUrl!.isNotEmpty) ||
+            (postData.videoUrl != null && postData.videoUrl!.isNotEmpty);
+            
+        if (!hasValidData) {
+          print('⚠️  NO VALID DATA FOUND - CONTENT NOT AVAILABLE');
+          throw Exception('Content is not available');
+        }
+        
         _previewData = postData; // Store preview data
         print('✅ FALLBACK PREVIEW DATA STORED:');
         print('   - isVideo: ${postData.isVideo}');
@@ -347,6 +398,13 @@ class DownloadProvider extends ChangeNotifier {
       }
     } catch (e) {
       print('❌ ALL METHODS FAILED: ${e.toString()}');
+      
+      // Check if it's the specific "not available" error
+      if (e.toString().contains('not available')) {
+        print('🔴 CONTENT NOT AVAILABLE: $e');
+        _errorMessage = 'Content is not available';
+        rethrow;
+      }
       
       final exception = e is Exception ? e : Exception(e.toString());
       if (InstagramErrorHandler.isNetworkIssue(exception)) {
@@ -368,7 +426,7 @@ class DownloadProvider extends ChangeNotifier {
       print('🔔 Notifying listeners after preview fetch');
       notifyListeners();
       // Add a small delay to ensure UI updates properly
-      await Future.delayed(const Duration(milliseconds: 50));
+      await Future.delayed(const Duration(milliseconds: 100));
     }
   }
 
@@ -382,6 +440,9 @@ class DownloadProvider extends ChangeNotifier {
     _errorMessage = null;
     _activeProgress = 0.0;
     notifyListeners();
+    
+    // Add a small delay to ensure UI updates properly
+    await Future.delayed(Duration(milliseconds: 150));
 
     try {
       // Check if we're running on web
@@ -524,6 +585,8 @@ class DownloadProvider extends ChangeNotifier {
     } finally {
       _isDownloading = false;
       notifyListeners();
+      // Add a small delay to ensure UI updates properly
+      await Future.delayed(const Duration(milliseconds: 100));
     }
   }
 
@@ -531,6 +594,13 @@ class DownloadProvider extends ChangeNotifier {
   Future<void> _downloadReelForWeb(String reelUrl) async {
     try {
       print('🌐 WEB DOWNLOAD: Using Local API for: $reelUrl');
+      
+      // Set active progress to indicate we're starting
+      _activeProgress = 0.0;
+      notifyListeners();
+      
+      // Add a small delay to ensure UI updates properly
+      await Future.delayed(Duration(milliseconds: 100));
 
       // For story URLs, extract the base URL (remove story ID and query params)
       String apiUrl = reelUrl;
@@ -557,12 +627,16 @@ class DownloadProvider extends ChangeNotifier {
       print('   • Media URL: ${reelData.mediaUrl}');
       print('   • File extension detected: $fileExtension');
       
+      // Update progress to show we're preparing download
+      _activeProgress = 0.1;
+      notifyListeners();
+      
       // Use the improved web download service
       final filePath = await WebDownloadService.downloadMedia(
         mediaUrl: reelData.mediaUrl,
         fileName: fileName,
         onProgress: (progress) {
-          _activeProgress = progress;
+          _activeProgress = 0.1 + (progress * 0.9); // Scale progress from 0.1 to 1.0
           notifyListeners();
         },
       );
@@ -728,8 +802,8 @@ class DownloadProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setIsFetchingPreview(bool v) {
-    _isFetchingPreview = v;
+  void setIsFetchingPreview(bool value) {
+    _isFetchingPreview = value;
     notifyListeners();
   }
 

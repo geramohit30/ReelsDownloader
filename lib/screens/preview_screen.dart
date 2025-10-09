@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -35,7 +36,10 @@ class _PreviewScreenState extends State<PreviewScreen> {
     super.initState();
     // Check if we're running on web
     _isWeb = identical(0, 0.0); // This is a hack to detect web platform
-    _maybeInitVideo();
+    // Add a small delay to ensure proper initialization on web
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _maybeInitVideo();
+    });
   }
 
   void _maybeInitVideo() async {
@@ -48,6 +52,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
       _isInitializing = true;
     });
     
+    // Add a small delay to ensure UI updates properly
+    await Future.delayed(Duration(milliseconds: 50));
+
     try {
       // For web, we can only play network URLs, not local files
       if (_isWeb &&
@@ -131,37 +138,25 @@ class _PreviewScreenState extends State<PreviewScreen> {
   }
 
   Future<void> _startDownload(BuildContext context) async {
-    // First check if multiple posts are available
-    try {
-      final multiPostData = await LocalApiService.fetchMultipleInstagramPosts(widget.reelUrl);
-      if (multiPostData.allUrls.length > 1) {
-        // Navigate to multi-post screen
-        final result = await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => MultiPostScreen(reelUrl: widget.reelUrl),
-          ),
-        );
-
-        // If download was successful, close this screen
-        if (result == true) {
-          Navigator.of(context).pop(true);
-        }
-        return;
-      }
-    } catch (e) {
-      // If checking for multiple posts fails, continue with regular download
-      print('Multiple posts check failed: $e');
-    }
-
-    // Regular single post download
+    print('📥 PREVIEW: Starting download process');
+    
+    // For preview screen, we already have the post data, so we don't need to check for multiple posts again
+    // unless the user specifically requests it
+    
+    // Regular single post download using the existing post data
+    print('📥 PREVIEW: Starting single post download using existing data');
     final provider = context.read<DownloadProvider>();
     try {
       setState(() {
         _startedDownload = true;
       });
+      
+      // Add a small delay to ensure UI updates properly
+      await Future.delayed(Duration(milliseconds: 100));
+      
       await provider.downloadReel(widget.reelUrl);
       if (!mounted) return;
+      print('✅ PREVIEW: Single post download completed, showing snackbar and popping');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Download completed')));
@@ -169,6 +164,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
     } catch (e) {
       if (!mounted) return;
       final message = provider.errorMessage ?? e.toString();
+      print('❌ PREVIEW: Single post download failed: $message');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text(message)));
@@ -182,14 +178,23 @@ class _PreviewScreenState extends State<PreviewScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final provider = context.watch<DownloadProvider>();
-    final isBusy =
-        provider.isDownloading ||
-        provider.isFetchingPreview ||
-        _startedDownload;
+    
+    // In preview screen, we should not show loading based on provider's global state
+    // since the data is already fetched. Only show loading when we're actually downloading.
+    final isBusy = _startedDownload || provider.isDownloading;
     final progress = provider.activeProgress;
 
+    // Add a small delay to ensure UI updates properly on first load
+    if (_isInitializing && !isBusy) {
+      // This ensures the progress indicator shows up properly
+      Future.microtask(() => setState(() {}));
+    }
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Preview')),
+      appBar: AppBar(
+        title: const Text('Preview'),
+        // Don't automatically pop when back button is pressed
+      ),
       body: SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -223,22 +228,24 @@ class _PreviewScreenState extends State<PreviewScreen> {
   ) {
     return Column(
       children: [
-        // Check for multiple posts button
+        // Check for multiple posts button (manual check)
         TextButton(
           onPressed: isBusy ? null : () => _checkForMultiplePosts(context),
-          child: const Text('Check for multiple posts'),
+          child: const Text('Check for multiple posts (manual)'),
         ),
         const SizedBox(height: 8),
-        // Download button
+        // Download button (downloads current post)
         _buildDownloadButton(theme, isBusy, progress, provider),
       ],
     );
   }
 
   Future<void> _checkForMultiplePosts(BuildContext context) async {
+    print('🔍 PREVIEW: Manually checking for multiple posts (user initiated)');
     try {
       final multiPostData = await LocalApiService.fetchMultipleInstagramPosts(widget.reelUrl);
       if (multiPostData.allUrls.length > 1) {
+        print('🟢 PREVIEW: Multiple posts found (${multiPostData.allUrls.length}), navigating to MultiPostScreen');
         // Navigate to multi-post screen
         final result = await Navigator.push(
           context,
@@ -246,12 +253,19 @@ class _PreviewScreenState extends State<PreviewScreen> {
             builder: (context) => MultiPostScreen(reelUrl: widget.reelUrl),
           ),
         );
+        print('🔙 PREVIEW: Returned from MultiPostScreen with result: $result');
 
-        // If download was successful, close this screen
+        // Show a message when returning from MultiPostScreen
         if (result == true) {
-          Navigator.of(context).pop(true);
+          print('✅ PREVIEW: Posts downloaded successfully');
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Posts downloaded successfully')),
+            );
+          }
         }
       } else {
+        print('🟡 PREVIEW: Only single post found');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Only one post found')),
@@ -259,6 +273,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
         }
       }
     } catch (e) {
+      print('❌ PREVIEW: Error checking for multiple posts: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error checking for multiple posts: $e')),
@@ -593,12 +608,12 @@ class _PreviewScreenState extends State<PreviewScreen> {
                 const SizedBox(width: 12),
                 Text(
                   isBusy
-                      ? (provider.isFetchingPreview
-                          ? 'Fetching...'
-                          : progress == null
-                          ? 'Preparing...'
-                          : 'Downloading ${(progress * 100).toStringAsFixed(0)}%')
-                      : 'Download',
+                      ? (_startedDownload 
+                          ? (progress == null
+                              ? 'Preparing...'
+                              : 'Downloading ${(progress * 100).toStringAsFixed(0)}%')
+                          : 'Starting...')
+                      : 'Download Current Post',
                   style: theme.textTheme.titleMedium?.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.w600,
