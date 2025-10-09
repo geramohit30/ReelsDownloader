@@ -39,26 +39,18 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   /// Check if a file exists (stub for web)
-  bool fileExists(String? path) {
-    // On web, we can't check file existence, so assume true if path exists
-    return path != null && path.isNotEmpty;
+  bool _fileExists(String? path) {
+    // Use the platform-specific implementation
+    return fileExists(path);
   }
 
   /// Build thumbnail widget (stub for web)
-  Widget buildThumbnail(String? thumbnailPath, {
+  Widget _buildThumbnail(String? thumbnailPath, {
     required BoxFit fit,
     Widget? errorWidget,
   }) {
-    if (thumbnailPath == null || thumbnailPath.isEmpty) {
-      return errorWidget ?? Container();
-    }
-
-    // On web, treat thumbnailPath as a network URL or data URL
-    return Image.network(
-      thumbnailPath,
-      fit: fit,
-      errorBuilder: (context, error, stackTrace) => errorWidget ?? Container(),
-    );
+    // Use the platform-specific implementation
+    return buildThumbnail(thumbnailPath, fit: fit, errorWidget: errorWidget);
   }
 
   String? _validateUrl(String? v) {
@@ -654,7 +646,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 separatorBuilder: (_, __) => const SizedBox(width: 12),
                 itemBuilder: (_, index) {
                   final item = provider.items[index];
-                  final hasThumb = fileExists(item.thumbnailPath);
+                  final hasThumb = _fileExists(item.thumbnailPath);
                   return Container(
                     width: 60,
                     decoration: BoxDecoration(
@@ -676,7 +668,7 @@ class _HomeScreenState extends State<HomeScreen> {
                             fit: StackFit.expand,
                             children: [
                               if (hasThumb)
-                                buildThumbnail(
+                                _buildThumbnail(
                                   item.thumbnailPath,
                                   fit: BoxFit.cover,
                                   errorWidget: Container(
