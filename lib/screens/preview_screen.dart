@@ -231,7 +231,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
         // Check for multiple posts button (manual check)
         TextButton(
           onPressed: isBusy ? null : () => _checkForMultiplePosts(context),
-          child: const Text('Check for multiple posts (manual)'),
+          child: const Text('Check for multiple posts'),
         ),
         const SizedBox(height: 8),
         // Download button (downloads current post)

@@ -27,7 +27,7 @@ class LocalApiService {
   /// Throws [LocalApiException] if the request fails
   static Future<InstagramReelData> fetchInstagramReel(
     String url, {
-    int maxRetries = 3,
+    int maxRetries = 2,
     Duration retryDelay = _defaultRetryDelay,
   }) async {
     // Rate limiting: ensure 4 seconds between requests
